@@ -1,0 +1,4 @@
+Questions:
+1. what to do in case of "3-inch" - can we separate manually
+2. can we change all numbers to the word "number" fpr training
+3. we need to understande better the number of feature from each kind
