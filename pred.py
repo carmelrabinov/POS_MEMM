@@ -14,13 +14,13 @@ try: import cPickle as pickle
 except: import pickle
 import copy
 import os
-
+import random
 
 ############# parcing data ###############
 project_dir = os.path.dirname(os.path.realpath('__file__'))
 data_path = project_dir + '\\data\\train.wtag' 
 test_path = project_dir + '\\data\\test.wtag'
-comp_path = test_path = project_dir + '\\data\\test.wtag'
+comp_path = project_dir + '\\data\\comp.words'
 
 
 data = []   # holds the data
@@ -102,6 +102,7 @@ for line in f:
 # u = tag at word k-1
 # t = tag at word k-2    
 def calc_probability(tag,word,u,t):
+#    return random.uniform(0, 1)
     if word == 'The':
         if tag == 'TO':
             if u == '/*' and t == '/*':
@@ -160,15 +161,17 @@ S[0] = tmp_list
 
 # run Viterbi algorithm for each sentence:
 for sentence in corpus:
-    
+    # init empty array of strings to save the tag for each word in the sentance    
     sentence_len = len(sentence)
-    sentence_tags =  [] # this is a list of the chosen tags, starts from the *last* word and moving backwords
-   
-    # init dynamic matrix with size (position k,tag at position k-2, tag at position k-1): 
+    sentence_tags = [''  for x in range(sentence_len)]
+
+    # init dynamic matrix with size: 
+    # pi_matrix[k,t,u] is the value of word number *k*, preciding tag u and t accordingly
     pi_matrix = np.zeros((sentence_len+1,T_size,T_size))
     pi_matrix[0,T.index('/*'),T.index('/*')] = 1
     
     # init back pointers matrix:
+    #bp[k,t,u] is the tag index of word number *k-2*, following tag t and u accordingly
     bp = np.zeros((sentence_len+1,T_size,T_size),dtype=np.int)
     
     # init relevant tags set for each word in the sentence:
@@ -177,7 +180,7 @@ for sentence in corpus:
     
     
     # u = word at position k-1
-    # t = word at position k-2    
+    # t = word at position k-2   
     for k in range (1,sentence_len+1): # for each word in the sentence
         for current_tag in S[k]: # for each t possible tag
             for u in S[k-1]: # for each t-1 possible tag
@@ -193,27 +196,22 @@ for sentence in corpus:
                         
                         #if its the last word in the sentence, save the last two tags:
                         if k == (sentence_len):
-                            sentence_tags.append(current_tag)
-                            sentence_tags.append(u)
-    
-#    print('finished viterbi calcutlation. move to back pointer extraction')
+                            sentence_tags[k-1] = current_tag
+                            sentence_tags[k-2] = u
     
     # extracting MEMM tags path from back pointers matrix:
-    for i in range(sentence_len-2):
-        # calculate the idx of tag k at the sentence_tags list (NOTICE: it goes from the last tag to the first)
-        k_tag_idx = bp[sentence_len-i,T.index(sentence_tags[i+1]),T.index(sentence_tags[i])]
-        
-        # adppen the k-th tag to the list
-        sentence_tags.append(T[k_tag_idx])
-    
-    # reversing the list of tags (so it will go drom the first tag to the last):
-    sentence_tags.reverse()
-    
+    for i in range(sentence_len-3,-1,-1):
+        # calculate the idx of tag i in T db:
+        # reminder - bp[k,t,u] is the tag of word *k-2*, following tag t and u accordingly
+        k_tag_idx = bp[i+3,T.index(sentence_tags[i+1]),T.index(sentence_tags[i+2])]
+
+        # update the i-th tag to the list of tags
+        sentence_tags[i] = T[k_tag_idx]
+
     # build tagged sentence:
     tagged_sentence = ''
     for i in range(sentence_len):
         tagged_sentence += (sentence[i] +'_')
         tagged_sentence += sentence_tags[i] + (' ')
     print(tagged_sentence)
-    
     
