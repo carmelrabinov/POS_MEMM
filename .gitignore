@@ -1,2 +1,6 @@
 results.log
 train_results
+.idea
+pred_carmel.py
+data/carmel_test.txt
+data/carmel_test2.txt
