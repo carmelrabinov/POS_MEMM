@@ -12,6 +12,9 @@ import time
 import argparse
 try: import cPickle as pickle
 except: import pickle
+import os
+import sys
+from itertools import chain
 from scipy.sparse import csr_matrix
 
 
@@ -67,44 +70,6 @@ def get_word_all_possible_tags_features(xi, th, mode, to_compress):
                 si_features[i, :] = features
 
         return csr_matrix(si_features)
-    
-#def get_word_all_t_and_u_possible_tags_features(xi, t2, mode):
-#    """
-#    computes all feature vectors of a given word with all possible POS tags
-#    :param xi: the word
-#    :param th: tag history vector <t(i-2),t(i-1)>
-#    :param mode: base / complex
-#    :param to_compress: True if return value as a list of index, False if return value as binary feature vector
-#    :return: feature matrix as a matrix of indexes or as a binary matrix, each row represent a possible POS tag
-#    """
-#    if mode == 'base':
-#
-#        sentence_features_shape = (T_size - 2, T_size - 2, T_size ** 3 + T_size ** 2 + V_size * T_size)
-#        si_features = np.empty(shape=sentence_features_shape, dtype=bool)
-#    
-#        # iterate over all the words in the sentence besides START and STOP special signs
-#        for j, t1 in enumerate(T):
-#            for i, tag in enumerate(T):
-#                features = get_base_features(xi, [t2, t1, tag])
-#    
-#                si_features[j, i, :] = features
-#    
-#        return si_features
-
-
-#def calc_all_u_and_t_possible_tags_probabilities(xi, t2, w):
-#    """
-#    calculate probability p(ti|xi,w)
-#    :param xi: the word[i]
-#    :param t1: POS tag for word[i-1]
-#    :param t2: POS tag for word[i-2]
-#    :param w: weights vector
-#    :return: a list for all posbible ti probabilities p(ti|xi,w) as float64
-#    """
-#    # all_y_feats returns as sparse matrix, also expect w as sparse matrix
-#    all_y_feats = get_word_all_t_and_u_possible_tags_features(xi, t2, 'base')
-#    tmp = np.exp(np.sum(w.multipy(all_y_feats), axis = 2)).reshape((T_size-2,T_size-2))
-#    return tmp / np.sum(tmp, axis=1)
 
 
 def calc_all_possible_tags_probabilities(xi, t1, t2, w):
@@ -116,145 +81,174 @@ def calc_all_possible_tags_probabilities(xi, t1, t2, w):
     :param w: weights vector
     :return: a list for all posbible ti probabilities p(ti|xi,w) as float64
     """
-    
+
     all_y_feats = get_word_all_possible_tags_features(xi, [t2, t1], 'base', False)
     tmp = np.exp(csr_matrix.sum(w.multiply(all_y_feats), axis = 1)).reshape(T_size-2)
     return tmp / np.sum(tmp)
-#    return np.exp(np.sum(w*all_y_feats, axis = 1)) / np.sum(np.exp(np.sum(w*all_y_feats, axis=1)))
 
 
-
-def viterby_predictor(sentence, weights_):
-    # init empty array of strings to save the tag for each word in the sentance    
-    sentence_len = len(sentence)
-    sentence_tags = [''  for x in range(sentence_len)]
-
-    # init dynamic matrix with size: 
-    # pi_matrix[k,t(i-1),t(i)] is the value of word number *k*, preciding tag u and t accordingly
-    pi_matrix = np.zeros((sentence_len,T_size-2,T_size-2))
+def viterby_predictor(corpus, w, prob_mat = None):
+    """
+    calculate the tags for the corpus
+    :param corpus: a list of sentences (each sentence as a list of words) 
+    :param w: trained weights
+    :param prob_mat: the propability matrix for this corpus if exist
+    :return: all_sentence_tags: a list of tagged sentences (each sentence as a list of tags
+             all_tagged_sentence: a list of tagged sentences in form of "word_tag"
+             prob_mat: the propability matrix for this corpus
+    """
+    # compress weights using sparse matrix representation
+    weights = csr_matrix(w)
     
-    # init back pointers matrix:
-    #bp[k,t,u] is the tag index of word number *k-2*, following tag t and u accordingly
-    bp = np.zeros((sentence_len,T_size-2,T_size-2),dtype=np.int)
-          
-    # holds all p(t(i),t(i-1),t(i-2))
-    prob_mat = np.zeros((T_size - 2,T_size - 2,T_size - 2))
-    
-    weights = csr_matrix(weights_)
-    
-    for k in range (0,sentence_len): # for each word in the sentence
-
-        if k > 1: # seceond word and above                         
-            
-            # this is most of the time:
-            # u = word at position k-1
-            # t = word at position k-2   
-            for u in T: # for each t-1 possible tag
-                for t in T: # for each t-2 possible tag:
-                    prob_mat[:, T.index(u), T.index(t)] = calc_all_possible_tags_probabilities(sentence[k], u, t, weights)
+    # init a list of singular words in the target corpus:
+    V_COMP = sorted(list(set(chain(*corpus))))
+    V_COMP_size = len(V_COMP)
        
-        for current_tag in T: # for each t possible tag
-            
-            if k == 0:
-                pi_matrix[k, T_with_start.index('/*'), :] = calc_all_possible_tags_probabilities(sentence[k], '/*', '/*', weights)
-
-            elif k == 1:
-                for u in T: # for each t-1 possible tag
-                    pi_matrix[k, T.index(u), :] = pi_matrix[k - 1, T_with_start.index('/*'), T.index(u)] * calc_all_possible_tags_probabilities(sentence[k], u, '/*', weights)
-
-            else:      
-                for u in T: # for each t-1 possible tag
-                
-                    #calculate pi value, and check if it exeeds the current max:
-                    pi_values = pi_matrix[k-1, :, T.index(u)] * prob_mat[T.index(current_tag), T.index(u), :]
-                    ind = np.argmax(pi_values)
-                    if pi_values[ind] > pi_matrix[k, T.index(u), T.index(current_tag)]:
-                        
-                        # update max:
-                        pi_matrix[k, T.index(u), T.index(current_tag)] = pi_values[ind]
-                        
-                        # update back pointers:
-                        bp[k, T.index(u), T.index(current_tag)] = ind
-             
-    u_ind, curr_ind = np.unravel_index(pi_matrix[sentence_len-1,:,:].argmax(), pi_matrix[sentence_len-1,:,:].shape)
-    sentence_tags[-2:] = [T[u_ind], T[curr_ind]]
-        
-        
-    # extracting MEMM tags path from back pointers matrix:
-    for i in range(sentence_len-3,-1,-1):
-        # calculate the idx of tag i in T db:
-        # reminder - bp[k,t,u] is the tag of word *k-2*, following tag t and u accordingly
-        k_tag_idx = bp[i + 2, T.index(sentence_tags[i + 1]), T.index(sentence_tags[i + 2])]
-
-        # update the i-th tag to the list of tags
-        sentence_tags[i] = T[k_tag_idx]
-
-    # build tagged sentence:
-    tagged_sentence = ''
-    for i in range(sentence_len):
-        tagged_sentence += (sentence[i] +'_')
-        tagged_sentence += sentence_tags[i] + (' ')
+    #init probability matrix:
+    #holds all p(word,t(i),t(i-1),t(i-2))
+    if prob_mat == None:
+        prob_mat = np.zeros((V_COMP_size, T_size - 2,T_size - 2,T_size - 2))
     
-    return(tagged_sentence, sentence_tags)
+    all_sentence_tags = []
+    all_tagged_sentence = []
+ 
+    for sentence in corpus:
+        # init empty array of strings to save the tag for each word in the sentance    
+        sentence_len = len(sentence)
+        sentence_tags = [''  for x in range(sentence_len)]
+    
+        # init dynamic matrix with size: 
+        # pi_matrix[k,t(i-1),t(i)] is the value of word number *k*, preciding tag u and t accordingly
+        pi_matrix = np.zeros((sentence_len,T_size-2,T_size-2))
+        
+        # init back pointers matrix:
+        #bp[k,t,u] is the tag index of word number *k-2*, following tag t and u accordingly
+        bp = np.zeros((sentence_len,T_size-2,T_size-2),dtype=np.int)
+              
+        # holds all p(t(i),t(i-1),t(i-2))
+        #prob_mat = np.zeros((T_size - 2,T_size - 2,T_size - 2))
+    
+        for k in range (0,sentence_len): # for each word in the sentence
+            t0 = time.time()
+            # if havn't seen the word before - update the probebility matrix for all possible tagsL
+            if k > 1 and not prob_mat[V_COMP.index(sentence[k]),0,0,0].any():
+                for u in T: # for each t-1 possible tag
+                    for t in T: # for each t-2 possible tag:
+                        prob_mat[V_COMP.index(sentence[k]),:, T.index(u), T.index(t)] = calc_all_possible_tags_probabilities(sentence[k], u, t, weights)
+            for current_tag in T: # for each t possible tag
+                
+                if k == 0:
+                    # at the first two words there is no meaning to the k-1 tag index. pi[k-1]
+                    pi_matrix[k, 0, :] = 1 * calc_all_possible_tags_probabilities(sentence[k], '/*', '/*', weights)
+    
+                elif k == 1:
+                    for u in T: # for each t-1 possible tag
+                        pi_matrix[k, T.index(u), :] = pi_matrix[k - 1, 0, T.index(u)] * calc_all_possible_tags_probabilities(sentence[k], u, '/*', weights)
+    
+                else:      
+                    for u in T: # for each t-1 possible tag
+                    
+                        #calculate pi value, and check if it exeeds the current max:
+                        pi_values = pi_matrix[k-1, :, T.index(u)] * prob_mat[V_COMP.index(sentence[k]),T.index(current_tag), T.index(u), :]
+                        ind = np.argmax(pi_values)
+                        if pi_values[ind] > pi_matrix[k, T.index(u), T.index(current_tag)]:
+                            
+                            # update max:
+                            pi_matrix[k, T.index(u), T.index(current_tag)] = pi_values[ind]
+                            
+                            # update back pointers:
+                            bp[k, T.index(u), T.index(current_tag)] = ind
+                
+            print(sentence[k],' in: ',time.time() - t0)
+
+        u_ind, curr_ind = np.unravel_index(pi_matrix[sentence_len-1,:,:].argmax(), pi_matrix[sentence_len-1,:,:].shape)
+        sentence_tags[-2:] = [T[u_ind], T[curr_ind]]
+            
+            
+        # extracting MEMM tags path from back pointers matrix:
+        for i in range(sentence_len-3,-1,-1):
+            # calculate the idx of tag i in T db:
+            # reminder - bp[k,t,u] is the tag of word *k-2*, following tag t and u accordingly
+            k_tag_idx = bp[i + 2, T.index(sentence_tags[i + 1]), T.index(sentence_tags[i + 2])]
+    
+            # update the i-th tag to the list of tags
+            sentence_tags[i] = T[k_tag_idx]
+    
+        # build tagged sentence:
+        tagged_sentence = ''
+        for i in range(sentence_len):
+            tagged_sentence += (sentence[i] +'_')
+            tagged_sentence += sentence_tags[i] + (' ')
+    
+        all_sentence_tags.append(sentence_tags)
+        all_tagged_sentence.append(tagged_sentence)
+
+    return(all_tagged_sentence, all_sentence_tags, prob_mat)
 
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('resultsFn', help='output results')
+    parser.add_argument('trained_model_Fn', help='output results')
+    parser.add_argument('-input_path', type=str, default=None)
+    parser.add_argument('-end', type=int, default=0)
     parser.parse_args(namespace=sys.modules['__main__'])
 
+    project_dir = os.path.dirname(os.path.realpath('__file__'))
 
-    project_dir = 'D:\\TECHNION\\NLP\\part_of_speech_taging_MEMM'
-    resultsFn = 'results_pycharm2'
-
-#    project_dir = os.path.dirname(os.path.realpath('__file__'))
-    test_path = project_dir + '\\data\\test.wtag'
-    comp_path = project_dir + '\\data\\comp.words'
-    data_path = project_dir + '\\data\\train.wtag'
-    
+#    test_path = project_dir + '\\data\\test.wtag'
+#    comp_path = project_dir + '\\data\\comp.words'
+#    data_path = project_dir + '\\data\\train.wtag'
   
     # load all data:
-    with open(project_dir + '\\train_results\\' + resultsFn + '.log', 'rb') as f:
+    with open(project_dir + '\\train_results\\' + trained_model_Fn + '.log', 'rb') as f:
         [weights, _, V, T_with_start, data, data_tag, test, test_tag] = pickle.load(f)
+        print('loded trained model')
+       
     
+           
     V_size = len(V)
     T_size = len(T_with_start)
     T = [x for x in T_with_start if (x != '/*' and x != '/STOP')]
   
-   
-    for i, line in enumerate(data):
-        data[i] = data[i][2:-1]
-    for i, line in enumerate(data):
-        data_tag[i] = data_tag[i][2:-1]
+    if input_path == None:
+            # remove /* and /Stop word
+        for i, line in enumerate(data):
+            test[i] = test[i][2:-1]
+        for i, line in enumerate(test):
+            test_tag[i] = test_tag[i][2:-1]
+        
+    else:
+        test = []  # holds the data
+        with open(input_path, 'r') as f:
+            for line in f:
+                linesplit = []
+                for word in line.split():
+                    linesplit.append(word)
+                test.append(linesplit) 
 
-    corpus = data
-           
-    all_sentence_tags = []
-    all_tagged_sentence = []
     
- 
-    # run Viterbi algorithm for each sentence:
-    curr_time = time.time()
-    for k, sentence in enumerate(corpus):
-        (tagged_sentence, sentence_tags) = viterby_predictor(sentence, weights)
-        all_sentence_tags.append(sentence_tags)
-        all_tagged_sentence.append(tagged_sentence)
-        print('finished sentence ',k,' in ',time.time() - curr_time)
-        curr_time = time.time()
 
-    line_accuracy = []
-    tot_length = 0
-    tot_correct = 0
-    for i, tag_line in enumerate(all_sentence_tags):       
-        res = np.sum([x==y for x,y in zip(tag_line, data_tag[i])])
-        line_accuracy.append(res/len(tag_line))
-        tot_length += len(tag_line)
-        tot_correct += res
-        
-    tot_accuracy = tot_correct/tot_length
-        
-    # save predictions:
-    with open(project_dir + '\\train_results\\' + resultsFn + '_predictions.log', 'wb') as f:
-        pickle.dump([all_sentence_tags, all_tagged_sentence, line_accuracy, tot_accuracy],f)
+    if end:
+        corpus = test[:end]
+    else:
+        corpus = test
+
+    # run Viterbi algorithm
+    (all_tagged_sentence, all_sentence_tags, _) = viterby_predictor(corpus, weights)
+
+#    line_accuracy = []
+#    tot_length = 0
+#    tot_correct = 0
+#    for i, tag_line in enumerate(all_sentence_tags):       
+#        res = np.sum([x==y for x,y in zip(tag_line, test_tag[i])])
+#        line_accuracy.append(res/len(tag_line))
+#        tot_length += len(tag_line)
+#        tot_correct += res
+#    
+#    tot_accuracy = tot_correct/tot_length    
+#    print("accuracy is: ",tot_accuracy)        
+#    # save predictions:
+    with open(project_dir + '\\train_results\\' + trained_model_Fn + '_predictions.log', 'wb') as f:
+        pickle.dump([all_sentence_tags, all_tagged_sentence],f)
 

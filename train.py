@@ -190,46 +190,6 @@ def calc_probability(ti, xi, t1, t2, w, to_compress):
         return np.exp(np.sum(w*tag_feat)) / np.sum(np.exp(np.sum(w*all_y_feats, axis=1)))
 
 
-def calc_probability_for_all_possible_t2_tags(ti, xi, t1, w, is_start):
-    """
-    calculate a list of probabilities p(ti|xi,w) for all t(i-2) options
-    :param ti: POS tag
-    :param xi: the word[i]
-    :param t1: POS tag for word[i-1]
-    :param w: weights vector
-    :param is_start: True if i=0 or 1, False else, use for dealing with /* start tag
-    :return: a list of probability p(ti|xi,w) as float64 for all t(i-2) options
-    """
-
-
-############
-#(ti, xi, t1, t2, w) = ('DT', 'The', '/*', '/*', w)
-#
-#sys.getsizeof(all_y_feats)
-#
-#
-#But_CC wire_NN transfers_NNS
-#
-#
-##some tests:
-#t0=time.time()
-#p = calc_probability('NN', 'But', '/*', '/*', w, True)
-#
-#end = time.time() - t0
-#
-#p = []
-#for t in T_no_start:
-#    p.append((calc_probability(t, 'But', 'NN', 'DT', w, False),t))
-#
-#end2 = time.time() - end - t0
-#
-#print(p, '  ', end)
-#print(p2, '  ', end2)
-#
-################
-
-
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('resultsFn', help='output results')
@@ -248,9 +208,9 @@ if __name__ == '__main__':
 #    test = True
 #    ##############
 
-    project_dir = 'D:\\TECHNION\\NLP\\part_of_speech_taging_MEMM'
+#    project_dir = 'D:\\TECHNION\\NLP\\part_of_speech_taging_MEMM'
     
-#    project_dir = os.path.dirname(os.path.realpath('__file__'))
+    project_dir = os.path.dirname(os.path.realpath('__file__'))
     test_path = project_dir + '\\data\\test.wtag'
     comp_path = project_dir + '\\data\\comp.words'
     data_path = project_dir + '\\data\\train.wtag'
