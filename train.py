@@ -325,19 +325,24 @@ if __name__ == '__main__':
             # update weights
             w += w_grads * lr
 
-            if h != 0 and h % 50 == 0:
-                print('finished sentence {} after {} minutes'.format(h, round((time.time() - start_time) / 60, 1)))
-                print('    expected_counts: ', np.sum(expected_counts), ', empirical_counts: ',
-                      np.sum(empirical_counts), ', normalization_counts: ', np.sum(normalization_counts))
-                print('    tot_grad: ', np.sum(w_grads * lr))
-                print('    non zero params: ', np.count_nonzero(w))
-                print('    non zero index: ', np.nonzero(w))
-                print('    non zero values: ', w[np.nonzero(w)])
+#            if h != 0 and h % 50 == 0:
+#                print('finished sentence {} after {} minutes'.format(h, round((time.time() - start_time) / 60, 1)))
+#                print('    expected_counts: ', np.sum(expected_counts), ', empirical_counts: ',
+#                      np.sum(empirical_counts), ', normalization_counts: ', np.sum(normalization_counts))
+#                print('    tot_grad: ', np.sum(w_grads * lr))
+#                print('    non zero params: ', np.count_nonzero(w))
+#                print('    non zero index: ', np.nonzero(w))
+#                print('    non zero values: ', w[np.nonzero(w)])
 
-#        weightsL.append(copy.deepcopy(w))
+        weightsL.append(copy.deepcopy(w))
         timeL.append(time.time() - start_time)
         print('finished epoch {} in {} min'.format(epoch + 1, (time.time() - start_time) / 60))
 
+        # dump all results:
+        with open(project_dir + '\\train_results\\' + resultsFn + '.log', 'wb') as f:
+            pickle.dump([weightsL, timeL], f)
+
     # dump all results:
-    with open(project_dir + '\\train_results\\' + resultsFn + '.log', 'wb') as f:
+    with open(project_dir + '\\train_results\\' + resultsFn + '_final.log', 'wb') as f:
         pickle.dump([w, timeL, V, T_with_start, data, data_tag, test, test_tag], f)
+

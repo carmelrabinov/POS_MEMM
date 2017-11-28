@@ -12,6 +12,7 @@ import time
 import argparse
 try: import cPickle as pickle
 except: import pickle
+from scipy.sparse import csr_matrix
 
 
 def get_base_features(word, tags):
@@ -65,9 +66,9 @@ def get_word_all_possible_tags_features(xi, th, mode, to_compress):
             else:
                 si_features[i, :] = features
 
-        return si_features
-
-#def get_word_all_possible_tags_features(xi, th, mode, to_compress):
+        return csr_matrix(si_features)
+    
+#def get_word_all_t_and_u_possible_tags_features(xi, t2, mode):
 #    """
 #    computes all feature vectors of a given word with all possible POS tags
 #    :param xi: the word
@@ -77,120 +78,33 @@ def get_word_all_possible_tags_features(xi, th, mode, to_compress):
 #    :return: feature matrix as a matrix of indexes or as a binary matrix, each row represent a possible POS tag
 #    """
 #    if mode == 'base':
-#        if to_compress:
-#            sentence_features_shape = (T_size - 2, 3)
-#            si_features = np.empty(shape=sentence_features_shape, dtype=np.int64)
 #
-#        else:
-#            sentence_features_shape = (T_size - 2, T_size ** 3 + T_size ** 2 + V_size * T_size)
-#            si_features = np.empty(shape=sentence_features_shape, dtype=bool)
-#
-#
+#        sentence_features_shape = (T_size - 2, T_size - 2, T_size ** 3 + T_size ** 2 + V_size * T_size)
+#        si_features = np.empty(shape=sentence_features_shape, dtype=bool)
+#    
 #        # iterate over all the words in the sentence besides START and STOP special signs
-#        for i, tag in enumerate(T_no_start):          
-#            features = get_base_features(xi, [th[0], th[1], tag])
-#
-#            if to_compress:
-#                si_features[i, :] = np.array(np.nonzero(features))
-#            else:
-#                si_features[i, :] = features
-#
+#        for j, t1 in enumerate(T):
+#            for i, tag in enumerate(T):
+#                features = get_base_features(xi, [t2, t1, tag])
+#    
+#                si_features[j, i, :] = features
+#    
 #        return si_features
 
 
-#def viterby_predictor(sentence, weights):
-#    # init set of possible tags:
-#    S={}
-#    tmp_list = [];
-#    tmp_list.append('/*')
-#    S[-2] = tmp_list
-#    S[-1] = tmp_list
-#    S[0] = tmp_list
-#
-#    # init empty array of strings to save the tag for each word in the sentance    
-#    sentence_len = len(sentence)
-#    sentence_tags = [''  for x in range(sentence_len)]
-#
-#    # init dynamic matrix with size: 
-#    # pi_matrix[k,t,u] is the value of word number *k*, preciding tag u and t accordingly
-#    pi_matrix = np.zeros((sentence_len+1,T_size,T_size))
-#    pi_matrix[0, T_with_start.index('/*'), T_with_start.index('/*')] = 1
-#    
-#    # init back pointers matrix:
-#    #bp[k,t,u] is the tag index of word number *k-2*, following tag t and u accordingly
-#    bp = np.zeros((sentence_len+1,T_size,T_size),dtype=np.int)
-#    
-#    # init relevant tags set for each word in the sentence:
-#    for i in range(1,sentence_len+1):
-#        S[i] = T
-#    
-#    t0 = time.time()
-#    # u = word at position k-1
-#    # t = word at position k-2   
-#    for k in range (1,sentence_len+1): # for each word in the sentence
-#        for current_tag in S[k]: # for each t possible tag
-#            for u in S[k-1]: # for each t-1 possible tag
-#                for t in S[k-2]: # for each t-2 possible tag:
-#                    
-#                    #calculate pi value, and check if it exeeds the current max:
-#                    tmp_val = pi_matrix[k - 1, T_with_start.index(t), T_with_start.index(u)] * calc_probability(current_tag, sentence[k - 1], u, t, weights, False)
-#                    
-#                    if tmp_val > pi_matrix[k, T_with_start.index(u), T_with_start.index(current_tag)]:
-#                        
-#                        # update max:
-#                        pi_matrix[k, T_with_start.index(u), T_with_start.index(current_tag)] = tmp_val;
-#                        
-#                        # update back pointers:
-#                        bp[k, T_with_start.index(u), T_with_start.index(current_tag)] = T_with_start.index(t)
-#                        
-##                        #if its the last word in the sentence, save the last two tags:
-##                        if k == (sentence_len):   
-##                            sentence_tags[k-1] = current_tag 
-##                            sentence_tags[k-2] = u 
-#        
-#        print('finished word ',k,' time: ',time.time() - t0)
-#        
-#    u_ind, curr_ind = np.unravel_index(pi_matrix[sentence_len-1,:,:].argmax(), pi_matrix[sentence_len-1,:,:].shape)
-#    sentence_tags[-2:] = [T_with_start[u_ind], T_with_start[curr_ind]]
-#
-#    
-#    # extracting MEMM tags path from back pointers matrix:
-#    for i in range(sentence_len-3,-1,-1):
-#        # calculate the idx of tag i in T db:
-#        # reminder - bp[k,t,u] is the tag of word *k-2*, following tag t and u accordingly
-#        k_tag_idx = bp[i + 3, T_with_start.index(sentence_tags[i + 1]), T_with_start.index(sentence_tags[i + 2])]
-#
-#        # update the i-th tag to the list of tags
-#        sentence_tags[i] = T_with_start[k_tag_idx]
-#
-#    # build tagged sentence:
-#    tagged_sentence = ''
-#    for i in range(sentence_len):
-#        tagged_sentence += (sentence[i] +'_')
-#        tagged_sentence += sentence_tags[i] + (' ')
-#    
-#    return(tagged_sentence, sentence_tags)
-
-
-def calc_probability(ti, xi, t1, t2, w, to_compress):
-    """
-    calculate probability p(ti|xi,w)
-    :param ti: POS tag
-    :param xi: the word[i]
-    :param t1: POS tag for word[i-1]
-    :param t2: POS tag for word[i-2]
-    :param w: weights vector
-    :return: probability p(ti|xi,w) as float64
-    """
-    if to_compress:
-        all_y_feats = get_word_all_possible_tags_features(xi, [t2, t1], 'base', True)
-        tag_feat = all_y_feats[T.index(ti)]
-        return np.exp(np.sum(w[tag_feat])) / np.sum(np.exp(np.sum(w[all_y_feats], axis=1)))
-
-    else:
-        all_y_feats = get_word_all_possible_tags_features(xi, [t2, t1], 'base', False)
-        tag_feat = all_y_feats[T.index(ti)]
-        return np.exp(np.sum(w*tag_feat)) / np.sum(np.exp(np.sum(w*all_y_feats, axis=1)))
+#def calc_all_u_and_t_possible_tags_probabilities(xi, t2, w):
+#    """
+#    calculate probability p(ti|xi,w)
+#    :param xi: the word[i]
+#    :param t1: POS tag for word[i-1]
+#    :param t2: POS tag for word[i-2]
+#    :param w: weights vector
+#    :return: a list for all posbible ti probabilities p(ti|xi,w) as float64
+#    """
+#    # all_y_feats returns as sparse matrix, also expect w as sparse matrix
+#    all_y_feats = get_word_all_t_and_u_possible_tags_features(xi, t2, 'base')
+#    tmp = np.exp(np.sum(w.multipy(all_y_feats), axis = 2)).reshape((T_size-2,T_size-2))
+#    return tmp / np.sum(tmp, axis=1)
 
 
 def calc_all_possible_tags_probabilities(xi, t1, t2, w):
@@ -202,11 +116,15 @@ def calc_all_possible_tags_probabilities(xi, t1, t2, w):
     :param w: weights vector
     :return: a list for all posbible ti probabilities p(ti|xi,w) as float64
     """
+    
     all_y_feats = get_word_all_possible_tags_features(xi, [t2, t1], 'base', False)
-    return np.exp(np.sum(w*all_y_feats, axis = 1)) / np.sum(np.exp(np.sum(w*all_y_feats, axis=1)))
+    tmp = np.exp(csr_matrix.sum(w.multiply(all_y_feats), axis = 1)).reshape(T_size-2)
+    return tmp / np.sum(tmp)
+#    return np.exp(np.sum(w*all_y_feats, axis = 1)) / np.sum(np.exp(np.sum(w*all_y_feats, axis=1)))
 
 
-def viterby_predictor(sentence, weights):
+
+def viterby_predictor(sentence, weights_):
     # init empty array of strings to save the tag for each word in the sentance    
     sentence_len = len(sentence)
     sentence_tags = [''  for x in range(sentence_len)]
@@ -221,11 +139,14 @@ def viterby_predictor(sentence, weights):
           
     # holds all p(t(i),t(i-1),t(i-2))
     prob_mat = np.zeros((T_size - 2,T_size - 2,T_size - 2))
-
+    
+    weights = csr_matrix(weights_)
+    
     for k in range (0,sentence_len): # for each word in the sentence
 
         if k > 1: # seceond word and above                         
             
+            # this is most of the time:
             # u = word at position k-1
             # t = word at position k-2   
             for u in T: # for each t-1 possible tag
@@ -255,21 +176,6 @@ def viterby_predictor(sentence, weights):
                         # update back pointers:
                         bp[k, T.index(u), T.index(current_tag)] = ind
              
-
-#                #calculate pi value, and check if it exeeds the current max:
-#                pi_values = pi_matrix[k-1, :, :] * np.transpose(prob_mat[T.index(current_tag), :, :])
-#                ind = np.argmax(pi_values, axis = 0)
-#                bool_list = pi_values[ind] > pi_matrix[k, :, T.index(current_tag)]
-#                if pi_values[ind] > pi_matrix[k, T.index(u), T.index(current_tag)]:
-#                    
-#                    # update max:
-#                    pi_matrix[k, T.index(u), T.index(current_tag)] = pi_values[ind]
-#                    
-#                    # update back pointers:
-#                    bp[k, T.index(u), T.index(current_tag)] = ind
-
-
-
     u_ind, curr_ind = np.unravel_index(pi_matrix[sentence_len-1,:,:].argmax(), pi_matrix[sentence_len-1,:,:].shape)
     sentence_tags[-2:] = [T[u_ind], T[curr_ind]]
         
