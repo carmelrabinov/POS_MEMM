@@ -4,3 +4,6 @@ train_results
 pred_carmel.py
 data/carmel_test.txt
 data/carmel_test2.txt
+NLP
+NLP/*
+data/test_data_carmel.txt
