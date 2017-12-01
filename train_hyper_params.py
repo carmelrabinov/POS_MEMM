@@ -361,7 +361,7 @@ def viterby_predictor(corpus, w, prob_mat=None):
             tagged_sentence += sentence_tags[i] + (' ')
         all_sentence_tags.append(sentence_tags)
         all_tagged_sentence.append(tagged_sentence)
-        print(tagged_sentence, ' ,time: ', time.time() - t0)
+        print(tagged_sentence, ' ,time(min): ', (time.time() - t0)/np.float64(60))
 
     return (all_tagged_sentence, all_sentence_tags, prob_mat)
 
@@ -431,18 +431,16 @@ if __name__ == '__main__':
             (all_tagged_sentence, all_sentence_tags, _) = viterby_predictor(corpus, w)
 
             line_accuracy = []
-            tot_accuracy = 0
-            if test_accuracy:
-                tot_length = 0
-                tot_correct = 0
-                for i, tag_line in enumerate(all_sentence_tags):
-                    res = np.sum([x == y for x, y in zip(tag_line, test_tag[i])])
-                    line_accuracy.append(res / len(tag_line))
-                    tot_length += len(tag_line)
-                    tot_correct += res
+            tot_length = 0
+            tot_correct = 0
+            for i, tag_line in enumerate(all_sentence_tags):
+                res = np.sum([x == y for x, y in zip(tag_line, test_tag[i])])
+                line_accuracy.append(res / len(tag_line))
+                tot_length += len(tag_line)
+                tot_correct += res
 
-                tot_accuracy = tot_correct / tot_length
-                print("Total accuracy is: ", tot_accuracy)
+            tot_accuracy = np.float64(tot_correct) / np.float64(tot_length)
+            print("Total test accuracy for lr={}, lambda_rate={} is: {}".format(lr, lambda_rate, tot_accuracy))
 
             # dump all results:
             with open(project_dir + '\\train_results\\' + resultsFn_ + '_final.log', 'wb') as f:
