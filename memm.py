@@ -82,17 +82,19 @@ def get_base_features(word, tags):
     # 1 if xi = x and ti = t
     try: features_100 = V_dict[word] * T_size + T_with_start_dict[tags[2]]
     except: features_100 = None 
-
+    features_100_length = V_size * T_size
+    
     # trigram feature - 1 if <t(i-2),t(is),t(i)> = <t1,t2,t3>
     features_103 = T_with_start_dict[tags[2]] * (T_size ** 2) + T_with_start_dict[tags[1]] * T_size + T_with_start_dict[tags[0]]
+    features_103_length = features_100_length + T_size**3
     
     # bigram feature - 1 if <t(i-1),t(i)> = <t1,t2>
     features_104 = T_with_start_dict[tags[2]] * T_size + T_with_start_dict[tags[1]]
 
     if features_100 == None:
-        return [features_103, features_104]
+        return [features_100_length + features_103, features_103_length + features_104]
     else:
-        return [features_100, features_103, features_104]
+        return [features_100, features_100_length + features_103, features_103_length + features_104]
 
 
 def get_word_all_possible_tags_features(xi, th, mode):
