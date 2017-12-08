@@ -250,9 +250,6 @@ def get_features(word, tags, mode):
 
         ##debug - all:
 
-
-
-
     return features
 
 
@@ -296,7 +293,8 @@ def loss(w, data, data_tag, lambda_rate, feature_size, T, T_size):
             expected_loss += logsumexp(exp_term)
 
         loss_ += empirical_loss - expected_loss - normalization_loss
-    print('Loss is: {}'.format((-1)*loss_))
+    # TODO: remove prints
+    # print('Loss is: {}'.format((-1)*loss_))
     return (-1)*loss_
 
 
@@ -309,7 +307,8 @@ def softmax(numerator, denominator):
 
 def loss_grads(w, data, data_tag, lambda_rate, feature_size, T, T_size):
 
-    t0 = time.time()
+    # TODO: remove prints
+    # t0 = time.time()
     w_grads = np.zeros(feature_size, dtype=np.float64)
     for h, sentence in enumerate(data):
         tag_sentence = data_tag[h]
@@ -346,7 +345,8 @@ def loss_grads(w, data, data_tag, lambda_rate, feature_size, T, T_size):
 
         # update grads for the sentence
         w_grads += empirical_counts - expected_counts - normalization_counts
-    print('Done calculate grads in {}, max abs grad is {}, max abs w is {}'.format((time.time()-t0)/60, np.max(np.abs(w_grads)), np.max(np.abs(w))))
+    # TODO: remove prints
+    # print('Done calculate grads in {}, max abs grad is {}, max abs w is {}'.format((time.time()-t0)/60, np.max(np.abs(w_grads)), np.max(np.abs(w))))
     return (-1)*w_grads
 
 
@@ -451,23 +451,15 @@ def viterby_predictor(corpus, w, prob_mat = None):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('resultsFn', help='output results')
-    parser.add_argument('-lambda_rate', type=np.float64, default=0.5)
+    parser.add_argument('-lambda_rate', type=np.float64, default=0.1)
     parser.add_argument('-toy', action='store_true')
     parser.add_argument('-input_path', type=str, default=None)
     parser.add_argument('-end', type=int, default=0)
     parser.add_argument('-suff_threshold', type=int, default=10)
     parser.add_argument('-pref_threshold', type=int, default=10)
-    parser.add_argument('-mode', type=str, default='complex')
+    parser.add_argument('-mode', type=str, default='base')
 
     parser.parse_args(namespace=sys.modules['__main__'])
-
-#    ##############
-#    max_epoch = 40
-#    lr = 0.2
-#    lambda_rate = 0.1
-#    noShuffle = True
-#    test = True
-#    ##############
 
     project_dir = 'D:\\TECHNION\\NLP\\part_of_speech_taging_MEMM'
     # project_dir = 'C:\\Users\\amirli\\Desktop\\amir\\part_of_speech_taging_MEMM-carmel\\POS_MEMM'
@@ -478,11 +470,11 @@ if __name__ == '__main__':
 
     # run on very small corpus to test the algorithm
     if toy:
-        data_path = project_dir + '\\data\\carmel_test3.txt'
-        test_path = project_dir + '\\data\\carmel_test3.txt'
+        data_path = project_dir + '\\data\\train.wtag'
+        test_path = project_dir + '\\data\\test.wtag'
         resultsFn = 'test1'
-        mode = 'complex'
-        end = 10
+        mode = 'base'
+        end = 20
         # data_path = project_dir + '\\data\\debug.wtag'
         # test_path = project_dir + '\\data\\debug.wtag'
 
@@ -507,10 +499,9 @@ if __name__ == '__main__':
     feature_size = get_feature_vector_size(mode)
 
     t0 = time.time()
-    lambda_rate = 0.1
-
     optimal_params = train_bfgs(data, data_tag, lambda_rate, T, T_size)
-    print('Finished training with code: {}\nIterations number: {}\nCalls number: {}'.format(optimal_params[2]['warnflag'],
+    print('Finished training with code: {}\nTraining time: {}\nIterations number: {}\nCalls number: {}'.format(optimal_params[2]['warnflag'],
+                                                                                   (time.time() -t0)/60,
                                                                                    optimal_params[2]['nit'],
                                                                                    optimal_params[2]['funcalls']))
     if optimal_params[2]['warnflag']:
