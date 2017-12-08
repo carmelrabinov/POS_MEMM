@@ -14,7 +14,7 @@ import copy
 from itertools import chain
 import random
 import os
-from scipy.optimize import fmin_l_bfgs_b
+from scipy.optimize import fmin_l_bfgs_b, fmin_bfgs, fmin_tnc
 from scipy.misc import logsumexp
 
 def data_preprocessing(data_path, test_path):
@@ -243,7 +243,7 @@ def loss(w, data, data_tag, lambda_rate, feature_size, T, T_size):
             feats = get_word_all_possible_tags_features(word, [tag_sentence[i - 2], tag_sentence[i - 1]], 'base')
             expected_loss += logsumexp(np.sum(w[feats], axis=1))
         loss_ += empirical_loss - expected_loss - normalization_loss
-    return loss_
+    return (-1)*loss_
 
 
 def softmax(numerator, denominator):
@@ -300,13 +300,13 @@ def loss_grads(w, data, data_tag, lambda_rate, feature_size, T, T_size):
     print('max_grads w: {}, {}'.format(np.max(w_grads), np.sum(w_grads > 0.1)))
     # np.clip(w_grads, None, 400, out=w_grads)
     # print('max_cliped_grads w: {}, {}'.format(np.max(w_grads), np.sum(w_grads > 20)))
-    return w_grads
+    return (-1)*w_grads
 
 
 def train_bfgs(data, data_tag, lambda_rate, T, T_size):
     feature_size = T_size ** 3 + T_size ** 2 + V_size * T_size
     w0 = np.zeros(feature_size, dtype=np.float64)
-    return fmin_l_bfgs_b(func=loss, x0=w0, fprime=loss_grads, args=(data, data_tag, lambda_rate, feature_size, T, T_size))
+    return fmin_l_bfgs_b(loss, x0=w0, fprime=loss_grads, args=(data, data_tag, lambda_rate, feature_size, T, T_size))
 
 
 def viterby_predictor(corpus, w, prob_mat = None):
@@ -454,15 +454,15 @@ if __name__ == '__main__':
     
     t0 = time.time()
     lambda_rate = 0.1
-    w_opt = train(100, data, data_tag, lambda_rate, 0.005)
-    # optimal_params = train_bfgs(data, data_tag, lambda_rate, T, T_size)
-    # if optimal_params[2]['warnflag']:
-    #     print('Error in training')
-    #     exit()
-    # else:
-    print('Done in time: {}'.format(time.time() - t0))
-    # w_opt = optimal_params[0]
-    print(w_opt)
+    # w_opt = train(20, data, data_tag, lambda_rate, 0.008)
+    optimal_params = train_bfgs(data, data_tag, lambda_rate, T, T_size)
+    if optimal_params[2]['warnflag']:
+        print('Error in training')
+        exit()
+    else:
+        print('Done in time: {}'.format(time.time() - t0))
+        w_opt = optimal_params[0]
+        print(w_opt)
 
     results_path = project_dir + '\\train_results\\' + resultsFn
     if not os.path.exists(results_path):
