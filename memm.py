@@ -10,9 +10,7 @@ import time
 import argparse
 try: import cPickle as pickle
 except: import pickle
-import copy
 from itertools import chain
-import random
 import os
 from scipy.optimize import fmin_l_bfgs_b, fmin_bfgs, fmin_tnc
 from scipy.misc import logsumexp
@@ -30,6 +28,7 @@ def data_preprocessing(data_path, test_path, pred_path):
              test: list of test sentences, each sentece as a list of words
              test_tag: list of test sentences tags, each sentece as a list of tags
     """
+    print('Data preprocessing...')
     data = []  # holds the data
     data_tag = []  # holds the taging 
     f = open(data_path, "r")
@@ -55,9 +54,8 @@ def data_preprocessing(data_path, test_path, pred_path):
     # tag options
     T = sorted(list(set(chain(*data_tag))))
 
-    # vocanulary
+    # vocabulary
     V = sorted(list(set(chain(*data))))
-
 
     # test
     test = []  # holds the data
@@ -72,19 +70,20 @@ def data_preprocessing(data_path, test_path, pred_path):
             tagsplit.append(tag)
         test_tag.append(tagsplit)
         test.append(linesplit)
-    
-    V_T = sorted(list(set(chain(*test))))
 
-    # pred
-    pred = []  # holds the data
-    f = open(pred_path, "r")
+    V_test = sorted(list(set(chain(*test))))
+
+    comp = []  # holds the data
+    f = open(comp_path, "r")
     for line in f:
         linesplit = []
         for word in line.split():
             linesplit.append(word)
-        pred.append(linesplit)
+        comp.append(linesplit)
     
-    return (V, T, data, data_tag, test, test_tag, pred, V_T)
+    print('Done preprocessing!')
+
+    return (V, T, data, data_tag, test, test_tag, pred, V_test)
 
 
 
@@ -94,11 +93,11 @@ def init_spelling_dicts(Vocabulary, threshold):
         histogram_suffix2 = {}
         histogram_suffix3 = {}
         histogram_suffix4 = {}
-        
+
         histogram_prefix2 = {}
         histogram_prefix3 = {}
         histogram_prefix4 = {}
-        
+
         #init the histograms to 0 for all relevant prefixes and suffixes
         for word in Vocabulary:
             word_len = len(word)
@@ -133,16 +132,16 @@ def init_spelling_dicts(Vocabulary, threshold):
             if histogram_suffix2[key] > threshold:
                 suffix_2[key] = i;
                 i += 1
-        
-        i = 0 
-        suffix_3 = {}       
+
+        i = 0
+        suffix_3 = {}
         for key in histogram_suffix3.keys():
             if histogram_suffix3[key] > threshold:
-                suffix_3[key] = i   
+                suffix_3[key] = i
                 i += 1
-        
+
         i = 0
-        suffix_4 = {}        
+        suffix_4 = {}
         for key in histogram_suffix4.keys():
             if histogram_suffix4[key] > threshold:
                 suffix_4[key] = i;
@@ -186,7 +185,7 @@ def get_feature_vector_size(mode):
         size_dict['F105'] = T_size # unigram of tag
         size_dict['G1'] = T_size  # is current word a number + the current tag
         size_dict['G2'] = T_size  # is current word starts with Upper case + the current tag
-    
+
     return sum(size_dict.values())
 
 def get_features(word, tags, mode):
@@ -200,13 +199,13 @@ def get_features(word, tags, mode):
     
     #base features:
     # 1 if xi = x and ti = t
-    try: 
+    try:
         F100 = V_dict[word] * T_size + T_with_start_dict[tags[2]]
         features.append(F100)
-    except:  
-        tmp = 0 #just because we have to write somthing
+    except: 
+        tmp = 0 #must do something in exept
     F100_len = V_size * T_size
-    
+
     # trigram feature - 1 if <t(i-2),t(is),t(i)> = <t1,t2,t3>
     F103 = T_with_start_dict[tags[2]] * (T_size ** 2) + T_with_start_dict[tags[1]] * T_size + T_with_start_dict[tags[0]]
     features.append(F103 + F100_len)
@@ -223,14 +222,11 @@ def get_features(word, tags, mode):
         if word_len > 2 and word[-2:] in suffix_2.keys():
             F101_2 = suffix_2[word[-2:]]*T_size + T_with_start_dict[tags[2]]
             features.append(F101_2 + F104_len)
-        F101_2_len = F104_len + T_size*len(suffix_2)  
-     
-          
+        F101_2_len = F104_len + T_size*len(suffix_2)         
         if word_len > 3 and word[-3:] in suffix_3.keys():
             F101_3 = suffix_3[word[-3:]]*T_size + T_with_start_dict[tags[2]]
             features.append(F101_3 + F101_2_len)
-        F101_3_len = F101_2_len + T_size*len(suffix_3)
-        
+        F101_3_len = F101_2_len + T_size*len(suffix_3)        
         if word_len > 4 and word[-4:] in suffix_4.keys():
             F101_4 = suffix_4[word[-4:]]*T_size + T_with_start_dict[tags[2]]
             features.append(F101_4 + F101_3_len)
@@ -262,16 +258,16 @@ def get_features(word, tags, mode):
         
         # F106: 
         F106_len = F105_len + 0
-        
+
         # F107:
         F107_len = F106_len + 0
-        
+
         # G1 : is the cuurent word a number and tag is t_i?
         if word[0].isdigit():
             G1 = T_with_start_dict[tags[2]]
             features.append(G1 + F107_len)
         G1_len = F107_len + T_size
-        
+
         # G2 : is the cuurent word starts in Upper case and tag is t_i?
         if word[0].isupper() and word[0].isalpha():
             G2 = T_with_start_dict[tags[2]]
@@ -279,27 +275,7 @@ def get_features(word, tags, mode):
         G2_len = G1_len + T_size
             
 
-   
     return features
-
-
-def get_word_all_possible_tags_features(xi, th, mode):
-    """
-    computes all feature vectors of a given word with all possible POS tags
-    :param xi: the word
-    :param th: tag history vector <t(i-2),t(i-1)>
-    :param mode: base / complex
-    :param to_compress: True if return value as a list of index, False if return value as binary feature vector
-    :return: feature matrix as a matrix of indexes or as a binary matrix, each row represent a possible POS tag
-    """
-    if mode == 'base':
-        si_features = np.empty(shape=(T_size - 2, 3), dtype=np.int64)
-
-        # iterate over all the words in the sentence besides START and STOP special signs
-        for i, tag in enumerate(T):
-            si_features[i, :] = get_features(xi, [th[0], th[1], tag], mode)
-
-        return si_features
 
 
 def calc_all_possible_tags_probabilities(xi, t1, t2, w):
@@ -317,118 +293,32 @@ def calc_all_possible_tags_probabilities(xi, t1, t2, w):
     return softmax(denominator,denominator)
 
 
-def train(max_epoch, data, data_tag, lambda_rate, lr):
-    noShuffle = False
-
-    # init
-    w = np.zeros(feature_size, dtype=np.float64)
-
-    start_time = time.time()
-
-    for epoch in range(max_epoch):
-        w_grads = loss_grads(w, data, data_tag, lambda_rate, feature_size, T, T_size)
-        print('finished epoch {} in {} min'.format(epoch + 1, (time.time() - start_time) / 60))
-        w += w_grads * lr
-
-    return (w)
-
-
-def train_online(max_epoch, data, data_tag, lambda_rate, lr):
-
-    # init
-    feature_size = T_size ** 3 + T_size ** 2 + V_size * T_size
-    w = np.zeros(feature_size, dtype=np.float64)
-
-    weightsL = []
-    timeL = [0]
-    weightsL.append(copy.deepcopy(w))
-
-    start_time = time.time()
-
-    for epoch in range(max_epoch):
-
-        # each epoch shuffle the order of the train sentences in the data
-        if not noShuffle:
-            s = list(zip(data, data_tag))
-            random.shuffle(s)
-            data, data_tag = zip(*s)
-
-            # calc grads
-        for h, sentence in enumerate(data):
-            tag_sentence = data_tag[h]
-
-            normalization_counts = lambda_rate * w
-
-
-            empirical_counts = np.zeros(feature_size, dtype=np.float64)
-            for i, word in enumerate(sentence[:-1]):
-                if i == 0 or i == 1:
-                    continue          
-                empirical_counts[get_features(word, tag_sentence[i-2:i+1], mode)] += 1
-
-
-            expected_counts = np.zeros(feature_size, dtype=np.float64)
-
-            # calculate p_array which contains p(y|x,w)
-            p_array = np.zeros((len(sentence[2:-1]), T_size - 2), dtype=np.float64)
-            for i, word in enumerate(sentence[:-1]):
-                if i == 0 or i == 1:
-                    continue
-                feats = get_word_all_possible_tags_features(word, [tag_sentence[i - 2], tag_sentence[i - 1]], 'base')
-                for j, tag in enumerate(T):
-                    tag_feat = feats[j, :]
-                    p_array[i - 2, j] = np.exp(np.sum(w[tag_feat])) / np.sum(np.exp(np.sum(w[feats], axis=1)))
-                    # need to insert something that checks for inf or nan like:  np.isinf(a).any()
-
-            # calc f_array which contains f(x,y)
-            f_array = np.zeros((len(sentence[2:-1]), T_size - 2, 3), dtype=np.int64)
-            for i, word in enumerate(sentence[:-1]):
-                if i == 0 or i == 1:
-                    continue
-                f_array[i - 2, :, :] = get_word_all_possible_tags_features(word, [tag_sentence[i - 2], tag_sentence[i - 1]], 'base')
-
-            # calc empirical counts
-            for i, word in enumerate(sentence[:-1]):
-                if i == 0 or i == 1:
-                    continue
-                for j, tag in enumerate(T):
-                    expected_counts[f_array[i - 2, j, :]] += p_array[i - 2, j]
-
-            w_grads = empirical_counts - expected_counts - normalization_counts
-
-            # update weights
-            w += w_grads * lr
-
-        weightsL.append(copy.deepcopy(w))
-        timeL.append(time.time() - start_time)
-        print('finished epoch {} in {} min'.format(epoch + 1, (time.time() - start_time) / 60))
-
-        # dump all results:
-        with open(project_dir + '\\train_results\\' + resultsFn + '.log', 'wb') as f:
-            pickle.dump([weightsL, timeL], f)
-
-    return (w, timeL)
-
-
 def loss(w, data, data_tag, lambda_rate, feature_size, T, T_size):
-    
+
     loss_ = 0
     for h, sentence in enumerate(data):
         tag_sentence = data_tag[h]
-        normalization_loss = np.sum(np.square(w)) * lambda_rate/2
-    
         empirical_loss = 0
         expected_loss = 0
-    
+
+        # calculate normalization loss term
+        normalization_loss = np.sum(np.square(w)) * lambda_rate/2
+
         for i, word in enumerate(sentence[:-1]):
             if i == 0 or i == 1:
-                continue 
+                continue
+            # calculate empirical loss term
             features_inx = get_features(word, tag_sentence[i-2:i+1], mode)
             empirical_loss += np.sum(w[features_inx])
-            
-            feats = get_word_all_possible_tags_features(word, [tag_sentence[i - 2], tag_sentence[i - 1]], 'base')
-            expected_loss += logsumexp(np.sum(w[feats], axis=1))
+
+            # calculate expected_loss term
+            exp_term = np.zeros(len(T))
+            for j, tag in enumerate(T):
+                exp_term[j] = np.sum(w[get_features(word, [tag_sentence[i-2], tag_sentence[i-1], tag], mode)])
+            expected_loss += logsumexp(exp_term)
+
         loss_ += empirical_loss - expected_loss - normalization_loss
+    print('Loss is: {}'.format((-1)*loss_))
     return (-1)*loss_
 
 
@@ -441,51 +331,44 @@ def softmax(numerator, denominator):
 
 def loss_grads(w, data, data_tag, lambda_rate, feature_size, T, T_size):
 
+    t0 = time.time()
     w_grads = np.zeros(feature_size, dtype=np.float64)
-    print('max w: {}, {}'.format(np.max(w), np.sum(w > 20)))
     for h, sentence in enumerate(data):
         tag_sentence = data_tag[h]
-    
+
+    # calculate weights normalization term
         normalization_counts = lambda_rate * w
+
+    # calculate empirical counts term
         empirical_counts = np.zeros(feature_size, dtype=np.float64)
         for i, word in enumerate(sentence[:-1]):
             if i == 0 or i == 1:
-                continue          
+                continue
             empirical_counts[get_features(word, tag_sentence[i-2:i+1], mode)] += 1
-    
-        expected_counts = np.zeros(feature_size, dtype=np.float64)
-    
-        # calculate p_array which contains p(y|x,w)
-        p_array = np.zeros((len(sentence[2:-1]), T_size - 2), dtype=np.float64)
-        for i, word in enumerate(sentence[:-1]):
-            if i == 0 or i == 1:
-                continue
-            feats = get_word_all_possible_tags_features(word, [tag_sentence[i - 2], tag_sentence[i - 1]], 'base')
-            for j, tag in enumerate(T):
-                tag_feat = feats[j, :]
-                # denominator = np.sum(w[feats], axis=1)
-                # numerator = np.sum(w[tag_feat])
-                p_array[i - 2, j] = softmax(np.sum(w[tag_feat]), np.sum(w[feats], axis=1))
-                # need to insert something that checks for inf or nan like:  np.isinf(a).any()
 
-        # calc f_array which contains f(x,y)
-        f_array = np.zeros((len(sentence[2:-1]), T_size - 2, 3), dtype=np.int64)
+    # calculate expected counts term
+        expected_counts = np.zeros(feature_size, dtype=np.float64)
+
+        # go over all words in sentence
         for i, word in enumerate(sentence[:-1]):
+            # 2 first words are /* /* start symbols
             if i == 0 or i == 1:
                 continue
-            f_array[i - 2, :, :] = get_word_all_possible_tags_features(word, [tag_sentence[i - 2], tag_sentence[i - 1]], 'base')
-    
-        # calc empirical counts
-        for i, word in enumerate(sentence[:-1]):
-            if i == 0 or i == 1:
-                continue
+
+            # calculate p(y|x,w) for word x and for all possible tag[i]
+            p = calc_all_possible_tags_probabilities(word, tag_sentence[i - 1], tag_sentence[i - 2], w)
+
             for j, tag in enumerate(T):
-                expected_counts[f_array[i - 2, j, :]] += p_array[i - 2, j]
-    
+                # take features indexes for tag[i] = j
+                tag_feat = get_features(word, [tag_sentence[i - 2], tag_sentence[i - 1], tag], mode)
+
+                # add p[j] to all features indexes that are equal to 1 (f_array[i - 2, j, :] is a list of indexes)
+                expected_counts[tag_feat] += p[j]
+            # TODO: need to insert something that checks for inf or nan like:  np.isinf(a).any()
+
+        # update grads for the sentence
         w_grads += empirical_counts - expected_counts - normalization_counts
-    print('max_grads w: {}, {}'.format(np.max(w_grads), np.sum(w_grads > 0.1)))
-    # np.clip(w_grads, None, 400, out=w_grads)
-    # print('max_cliped_grads w: {}, {}'.format(np.max(w_grads), np.sum(w_grads > 20)))
+    print('Done calculate grads in {}, max abs grad is {}, max abs w is {}'.format((time.time()-t0)/60, np.max(np.abs(w_grads)), np.max(np.abs(w))))
     return (-1)*w_grads
 
 
@@ -508,30 +391,30 @@ def viterby_predictor(corpus, w, prob_mat = None):
     # init a list of singular words in the target corpus:
     V_COMP = sorted(list(set(chain(*corpus))))
     V_COMP_size = len(V_COMP)
-       
+
     # init probability matrix:
     # holds all p(word,t(i),t(i-1),t(i-2))
     if prob_mat == None:
         prob_mat = np.zeros((V_COMP_size, T_size - 2,T_size - 2,T_size - 2))
-    
+
     all_sentence_tags = []
     all_tagged_sentence = []
- 
+
     for sentence in corpus:
         t0 = time.time()
 
         # init empty array of strings to save the tag for each word in the sentance
         sentence_len = len(sentence)
         sentence_tags = [''  for x in range(sentence_len)]
-    
+
         # init dynamic matrix with size: 
         # pi_matrix[k,t(i-1),t(i)] is the value of word number *k*, preciding tag u and t accordingly
         pi_matrix = np.zeros((sentence_len,T_size-2,T_size-2))
-        
+
         # init back pointers matrix:
         # bp[k,t,u] is the tag index of word number *k-2*, following tag t and u accordingly
         bp = np.zeros((sentence_len,T_size-2,T_size-2),dtype=np.int)
-                  
+
         for k in range (0,sentence_len): # for each word in the sentence
 
             # if havn't seen the word before - update the probebility matrix for all possible tagsL
@@ -541,7 +424,7 @@ def viterby_predictor(corpus, w, prob_mat = None):
                         prob_mat[V_COMP.index(sentence[k]),:, T_dict[u], T_dict[t]] = calc_all_possible_tags_probabilities(sentence[k], u, t, weights)
 
             for current_tag in T: # for each t possible tag
-                
+
                 if k == 0:
                     # at the first two words there is no meaning to the k-1 tag index. pi[k-1]
                     pi_matrix[k, 0, :] = 1 * calc_all_possible_tags_probabilities(sentence[k], '/*', '/*', weights)
@@ -550,16 +433,16 @@ def viterby_predictor(corpus, w, prob_mat = None):
                     for u in T: # for each t-1 possible tag
                         pi_matrix[k, T_dict[u], :] = pi_matrix[k - 1, 0, T_dict[u]] * calc_all_possible_tags_probabilities(sentence[k], u, '/*', weights)
                     break
-                else:      
+                else:
                     for u in T: # for each t-1 possible tag
                         # calculate pi value, and check if it exeeds the current max:
                         pi_values = pi_matrix[k-1, :, T_dict[u]] * prob_mat[V_COMP.index(sentence[k]),T_dict[current_tag], T_dict[u], :]
                         ind = np.argmax(pi_values)
                         if pi_values[ind] > pi_matrix[k, T_dict[u], T_dict[current_tag]]:
-                            
+
                             # update max:
                             pi_matrix[k, T_dict[u], T_dict[current_tag]] = pi_values[ind]
-                            
+
                             # update back pointers:
                             bp[k, T_dict[u], T_dict[current_tag]] = ind
 
@@ -571,10 +454,10 @@ def viterby_predictor(corpus, w, prob_mat = None):
             # calculate the idx of tag i in T db:
             # reminder - bp[k,t,u] is the tag of word *k-2*, following tag t and u accordingly
             k_tag_idx = bp[i + 2, T_dict[sentence_tags[i + 1]], T_dict[sentence_tags[i + 2]]]
-    
+
             # update the i-th tag to the list of tags
             sentence_tags[i] = T[k_tag_idx]
-    
+
         # build tagged sentence:
         tagged_sentence = ''
         for i in range(sentence_len):
@@ -622,15 +505,13 @@ if __name__ == '__main__':
     parser.add_argument('-end', type=int, default=0)
     parser.add_argument('-suff_threshold', type=int, default=10)
     parser.add_argument('-pref_threshold', type=int, default=10)
-    parser.add_argument('-mode', type=str, default='base')
+    parser.add_argument('-mode', type=str, default='complex')
     parser.add_argument('-baba', action='store_true')
-
-
     parser.parse_args(namespace=sys.modules['__main__'])
 
 
     project_dir = 'D:\\TECHNION\\NLP\\part_of_speech_taging_MEMM'
-    project_dir = 'C:\\Users\\amirli\\Desktop\\amir\\part_of_speech_taging_MEMM-carmel\\POS_MEMM'
+    # project_dir = 'C:\\Users\\amirli\\Desktop\\amir\\part_of_speech_taging_MEMM-carmel\\POS_MEMM'
 #    project_dir = os.path.dirname(os.path.realpath('__file__'))
     test_path = project_dir + '\\data\\test.wtag'
     comp_path = project_dir + '\\data\\comp.words'
@@ -640,7 +521,13 @@ if __name__ == '__main__':
     if toy:
         data_path = project_dir + '\\data\\debug.wtag'
         test_path = project_dir + '\\data\\debug.wtag'
-    
+        data_path = project_dir + '\\data\\carmel_test3.txt'
+        test_path = project_dir + '\\data\\carmel_test3.txt'
+        resultsFn = 'test1'
+        mode = 'complex'
+        end = 10
+        # data_path = project_dir + '\\data\\debug.wtag'
+        # test_path = project_dir + '\\data\\debug.wtag'
     if baba:
         data_path = project_dir + '\\data\\debug.wtag'
         test_path = project_dir + '\\data\\debug.wtag'
@@ -669,23 +556,24 @@ if __name__ == '__main__':
         T_with_start_dict[tag] = i
     V_dict = {}
     for i,tag in enumerate(V):
-        V_dict[tag] = i  
-    
-    feature_size = get_feature_vector_size(mode) 
+        V_dict[tag] = i
+
+
+    feature_size = get_feature_vector_size(mode)
 
     t0 = time.time()
     lambda_rate = 0.1
-    
-    # w_opt = train(20, data, data_tag, lambda_rate, 0.008)
-    mode = 'complex' #debug
+
     optimal_params = train_bfgs(data, data_tag, lambda_rate, T, T_size)
+    print('Finished training with code: {}\nIterations number: {}\nCalls number: {}'.format(optimal_params[2]['warnflag'],
+                                                                                   optimal_params[2]['nit'],
+                                                                                   optimal_params[2]['funcalls']))
     if optimal_params[2]['warnflag']:
-        print('Error in training')
+        print('Error in training:\n{}'.format(optimal_params[2]['task']))
         exit()
     else:
         print('Done in time: {}'.format(time.time() - t0))
         w_opt = optimal_params[0]
-
 
     results_path = project_dir + '\\train_results\\' + resultsFn
     if not os.path.exists(results_path):
@@ -722,8 +610,6 @@ if __name__ == '__main__':
         corpus = test[:end]
     else:
         corpus = test
-    
-
 
     # run Viterbi algorithm
     (all_tagged_sentence, all_sentence_tags, _) = viterby_predictor(corpus, w_opt)
