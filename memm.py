@@ -14,6 +14,8 @@ from itertools import chain
 import os
 from scipy.optimize import fmin_l_bfgs_b, fmin_bfgs, fmin_tnc
 from scipy.misc import logsumexp
+import pandas as pd
+from collections import Counter
 
 def data_preprocessing(data_path, test_path, pred_path):
     """
@@ -78,13 +80,15 @@ def data_preprocessing(data_path, test_path, pred_path):
         for word in line.split():
             linesplit.append(word)
         comp.append(linesplit)
-
+    
     print('Done preprocessing!')
-    return (V, T, data, data_tag, test, test_tag, comp, V_test)
+
+    return (V, T, data, data_tag, test, test_tag, pred, V_test)
 
 
-def init_suffix_dicts(Vocabulary, threshold):
 
+def init_spelling_dicts(Vocabulary, threshold):
+        
         #declare histograms that will countain count in the corpus for each prefix and suffix
         histogram_suffix2 = {}
         histogram_suffix3 = {}
@@ -96,30 +100,34 @@ def init_suffix_dicts(Vocabulary, threshold):
 
         #init the histograms to 0 for all relevant prefixes and suffixes
         for word in Vocabulary:
-            if word[-1].isdigit(): continue
-            if (len(word) > 1):
+            word_len = len(word)
+            if word[-1].isdigit() or word[0].isdigit(): continue
+            if word_len > 2:
                 histogram_suffix2[word[-2:]] = 0
                 histogram_prefix2[word[:2]] = 0
-            if (len(word) > 2):
+            if word_len > 3:
                 histogram_suffix3[word[-3:]] = 0
                 histogram_prefix3[word[:3]] = 0
-            if (len(word) > 3):
+            if word_len > 4:
                 histogram_suffix4[word[-4:]] = 0
                 histogram_prefix4[word[:4]] = 0
 
+        #fill the histogram with count of each relevant prefix / suffix in the corpus
         for word in Vocabulary:
-            if word[-1].isdigit(): continue
-            if len(word) > 1:
+            word_len = len(word)
+            if word[-1].isdigit() or word[0].isdigit(): continue
+            if word_len > 2:
                 histogram_suffix2[word[-2:]] += 1
-
-            if len(word) > 2:
+                histogram_prefix2[word[:2]] += 1                
+            if word_len > 3:
                 histogram_suffix3[word[-3:]] += 1
-
-            if len(word) > 3:
+                histogram_prefix3[word[:3]] += 1
+            if word_len > 4:
                 histogram_suffix4[word[-4:]] += 1
+                histogram_prefix4[word[:4]] += 1
 
-        suffix_2 = {}
-        i = 0
+        suffix_2 = {}   
+        i = 0 
         for key in histogram_suffix2.keys():
             if histogram_suffix2[key] > threshold:
                 suffix_2[key] = i;
@@ -138,8 +146,29 @@ def init_suffix_dicts(Vocabulary, threshold):
             if histogram_suffix4[key] > threshold:
                 suffix_4[key] = i;
                 i += 1
-
-        return (suffix_2, suffix_3, suffix_4)
+        
+        prefix_2 = {}   
+        i = 0 
+        for key in histogram_prefix2.keys():
+            if histogram_prefix2[key] > threshold:
+                prefix_2[key] = i;
+                i += 1
+        
+        prefix_3 = {}   
+        i = 0 
+        for key in histogram_prefix3.keys():
+            if histogram_prefix3[key] > threshold:
+                prefix_3[key] = i;
+                i += 1
+                
+        prefix_4 = {}   
+        i = 0 
+        for key in histogram_prefix4.keys():
+            if histogram_prefix4[key] > threshold:
+                prefix_4[key] = i;
+                i += 1                        
+                        
+        return (suffix_2, suffix_3, suffix_4, prefix_2, prefix_3, prefix_4)
 
 def get_feature_vector_size(mode):
     size_dict = {}
@@ -150,6 +179,9 @@ def get_feature_vector_size(mode):
         size_dict['F101_2'] = T_size*len(suffix_2) # all posible tags for each word in importnat suffix list
         size_dict['F101_3'] = T_size*len(suffix_3) # all posible tags for each word in importnat suffix list
         size_dict['F101_4'] = T_size*len(suffix_4) # all posible tags for each word in importnat suffix list
+        size_dict['F102_2'] = T_size*len(prefix_2) # all posible tags for each word in importnat prefix list
+        size_dict['F102_3'] = T_size*len(prefix_3) # all posible tags for each word in importnat prefix list
+        size_dict['F102_4'] = T_size*len(prefix_4) # all posible tags for each word in importnat prefix list
         size_dict['F105'] = T_size # unigram of tag
         size_dict['G1'] = T_size  # is current word a number + the current tag
         size_dict['G2'] = T_size  # is current word starts with Upper case + the current tag
@@ -160,16 +192,18 @@ def get_features(word, tags, mode):
     """
     :param word: the word
     :param tags: POS tags of the trigram as as a list <t(i-2), t(i-1), t(i)>
-    :return: features - a binary feature vector
+    :return: features - list of the features vector's indexes which are "true" 
     """
     features = []
-
+    word_len = len(word)
+    
+    #base features:
     # 1 if xi = x and ti = t
     try:
         F100 = V_dict[word] * T_size + T_with_start_dict[tags[2]]
         features.append(F100)
-    except:
-        tmp = 0
+    except: 
+        tmp = 0 #must do something in exept
     F100_len = V_size * T_size
 
     # trigram feature - 1 if <t(i-2),t(is),t(i)> = <t1,t2,t3>
@@ -182,49 +216,46 @@ def get_features(word, tags, mode):
     features.append(F104 + F103_len)
     F104_len = F103_len + T_size**2
 
-    if mode=='complex':
+    if mode=='complex': #complex featurs:
 
-        # F101: suffix in last 2/3/4 letters suffix lists && tag <t(i)>
-        if len(word) > 1 and word[-2:] in suffix_2.keys():
+        # F101: suffix of length  2/3/4 which is in suffix lists && tag <t(i)>
+        if word_len > 2 and word[-2:] in suffix_2.keys():
             F101_2 = suffix_2[word[-2:]]*T_size + T_with_start_dict[tags[2]]
             features.append(F101_2 + F104_len)
-
-#            #debug:
-#            if F101_2 + F104_len > feature_size:
-#                print('F101_2: ', F101_2 + F104_len)
-
-        F101_2_len = F104_len + T_size*len(suffix_2)
-        if len(word) > 2 and word[-3:] in suffix_3.keys():
+        F101_2_len = F104_len + T_size*len(suffix_2)         
+        if word_len > 3 and word[-3:] in suffix_3.keys():
             F101_3 = suffix_3[word[-3:]]*T_size + T_with_start_dict[tags[2]]
             features.append(F101_3 + F101_2_len)
-#            #debug:
-#            if F101_3 + F101_2_len > feature_size:
-#                print('F101_3: ', F101_3 + F101_2_len)
-        F101_3_len = F101_2_len + T_size*len(suffix_3)
-        if len(word) > 3 and word[-4:] in suffix_4.keys():
+        F101_3_len = F101_2_len + T_size*len(suffix_3)        
+        if word_len > 4 and word[-4:] in suffix_4.keys():
             F101_4 = suffix_4[word[-4:]]*T_size + T_with_start_dict[tags[2]]
             features.append(F101_4 + F101_3_len)
-            #debug:
-#            if F101_4 + F101_3_len > feature_size:
-#                print('F101_4: ', F101_4 + F101_3_len)
-        F101_4_len = F101_3_len + T_size*len(suffix_4)
-
+        F101_4_len = F101_3_len + T_size*len(suffix_4)       
         F101_len = F101_4_len
-
-        # F102: suffix in last 2/3/4 letters suffix lists && tag <t(i)>
-
-        F102_len = F101_len + 0#TODO
-
+        
+        # F102: prefix of length 2/3/4 letters which is in prefix list && tag <t(i)>
+        if word_len > 2 and word[:2] in prefix_2.keys():
+            F102_2 = prefix_2[word[:2]]*T_size + T_with_start_dict[tags[2]]
+            features.append(F102_2 + F101_len)
+        F102_2_len = F101_len + T_size*len(prefix_2)      
+          
+        if word_len > 3 and word[:3] in prefix_3.keys():
+            F102_3 = prefix_3[word[:3]]*T_size + T_with_start_dict[tags[2]]
+            features.append(F102_3 + F102_2_len)
+        F102_3_len = F102_2_len + T_size*len(prefix_3)
+        
+        if word_len > 4 and word[:4] in prefix_4.keys():
+            F102_4 = prefix_4[word[:4]]*T_size + T_with_start_dict[tags[2]]
+            features.append(F102_4 + F102_3_len)
+        F102_4_len = F102_3_len + T_size*len(prefix_4)       
+        F102_len = F102_4_len
+        
+        
         # F105: tag is <t(i)>
         F105 = T_with_start_dict[tags[2]]
-        features.append(F105 + F102_len)
-
-        #debug:
-#        if F105 + F102_len > feature_size:
-#            print('F101_5: ', F105 + F102_len)
-
-        F105_len = F102_len + T_size
-
+        features.append(F105 + F102_len)            
+        F105_len = F102_len + T_size    
+        
         # F106: 
         F106_len = F105_len + 0
 
@@ -235,9 +266,6 @@ def get_features(word, tags, mode):
         if word[0].isdigit():
             G1 = T_with_start_dict[tags[2]]
             features.append(G1 + F107_len)
-
-            #debug:
-#            if G1
         G1_len = F107_len + T_size
 
         # G2 : is the cuurent word starts in Upper case and tag is t_i?
@@ -245,10 +273,6 @@ def get_features(word, tags, mode):
             G2 = T_with_start_dict[tags[2]]
             features.append(G2 + G1_len)
         G2_len = G1_len + T_size
-
-        # G3 : is the cuurent word starts in Upper case and tag is t_i?
-
-        ##debug - all:
 
     return features
 
@@ -444,8 +468,49 @@ def viterby_predictor(corpus, w, prob_mat = None):
         all_sentence_tags.append(sentence_tags)
         all_tagged_sentence.append(tagged_sentence)
         print(tagged_sentence, ' ,time: ', time.time() - t0)
+        
 
     return(all_tagged_sentence, all_sentence_tags, prob_mat)
+
+
+
+def create_confusion_matrix():
+#    init confusion matrix - [a,b] if we tagged word as "a" but the real tag is "b"
+    T_dict = {}
+    for i,tag in enumerate(T):
+        T_dict[tag] = i
+        
+    confusion_matrix = np.zeros((len(T),len(T)),dtype=np.int)
+    max_failure_matrix = np.zeros((10,len(T)),dtype=np.int)
+
+    res = 0
+    failure_dict = {}
+    for tag in T:
+        failure_dict[tag] = 0
+    for sen_idx, sen_tags in enumerate(all_sentence_tags): 
+        for pred_tag,real_tag in zip(sen_tags, test_tag[sen_idx]):
+            if pred_tag == real_tag:
+                res += 1
+            else:
+                failure_dict[pred_tag] += 1
+            confusion_matrix[T_dict[pred_tag],T_dict[real_tag]] += 1 
+    common_failure_tags = dict(Counter(failure_dict).most_common(10))
+    
+    i = 0
+    for key in common_failure_tags.keys():
+        common_failure_tags[key] = i
+        i += 1
+        
+    for tag in common_failure_tags.keys():
+        max_failure_matrix[common_failure_tags[tag]] = confusion_matrix[T_dict[tag]]
+    
+    confusion_matrix_fn = results_path +'\\confusion_matrix.csv'
+    df = pd.DataFrame(confusion_matrix, index = T, columns = T)    
+    df.to_csv(confusion_matrix_fn, index=True, header=True, sep=',')
+
+    max_failure_matrix_fn = results_path +'\\max_failure_matrix.csv'
+    df = pd.DataFrame(max_failure_matrix, index = list(common_failure_tags.keys()), columns = T)    
+    df.to_csv(max_failure_matrix_fn, index=True, header=True, sep=',')
 
 
 if __name__ == '__main__':
@@ -457,9 +522,10 @@ if __name__ == '__main__':
     parser.add_argument('-end', type=int, default=0)
     parser.add_argument('-suff_threshold', type=int, default=10)
     parser.add_argument('-pref_threshold', type=int, default=10)
-    parser.add_argument('-mode', type=str, default='base')
-
+    parser.add_argument('-mode', type=str, default='complex')
+    parser.add_argument('-baba', action='store_true')
     parser.parse_args(namespace=sys.modules['__main__'])
+
 
     project_dir = 'D:\\TECHNION\\NLP\\part_of_speech_taging_MEMM'
     # project_dir = 'C:\\Users\\amirli\\Desktop\\amir\\part_of_speech_taging_MEMM-carmel\\POS_MEMM'
@@ -470,17 +536,30 @@ if __name__ == '__main__':
 
     # run on very small corpus to test the algorithm
     if toy:
-        data_path = project_dir + '\\data\\train.wtag'
-        test_path = project_dir + '\\data\\test.wtag'
+        data_path = project_dir + '\\data\\debug.wtag'
+        test_path = project_dir + '\\data\\debug.wtag'
+        data_path = project_dir + '\\data\\carmel_test3.txt'
+        test_path = project_dir + '\\data\\carmel_test3.txt'
         resultsFn = 'test1'
         mode = 'base'
         end = 20
         # data_path = project_dir + '\\data\\debug.wtag'
         # test_path = project_dir + '\\data\\debug.wtag'
-
+    if baba:
+        data_path = project_dir + '\\data\\debug.wtag'
+        test_path = project_dir + '\\data\\debug.wtag'
+        corpus = test[:2] #debug
+        w_opt = w1[-1] #debug
+        mode = 'base'
+        results_path = '.\\'
+        
+        #debug
     (V, T_with_start, data, data_tag, test, test_tag, comp, V_dev) = data_preprocessing(data_path, test_path, comp_path)
     V_Total = set(V+V_dev)
-    # (suffix_2, suffix_3, suffix_4) = init_suffix_dicts(V_Total, suff_threshold)
+    (suffix_2, suffix_3, suffix_4, prefix_2, prefix_3, prefix_4) = init_spelling_dicts(V_Total,suff_threshold)
+
+
+
 
     V_size = len(V)
     T_size = len(T_with_start)
@@ -495,6 +574,7 @@ if __name__ == '__main__':
     V_dict = {}
     for i,tag in enumerate(V):
         V_dict[tag] = i
+
 
     feature_size = get_feature_vector_size(mode)
 
@@ -549,7 +629,8 @@ if __name__ == '__main__':
 
     # run Viterbi algorithm
     (all_tagged_sentence, all_sentence_tags, _) = viterby_predictor(corpus, w_opt)
-
+    create_confusion_matrix()
+    
     line_accuracy = []
     tot_accuracy = 0
     tot_length = 0
@@ -569,3 +650,245 @@ if __name__ == '__main__':
     with open(results_path +'\\predictions.txt', 'w') as f2:
         for s in all_tagged_sentence:
             f2.writelines(s+'\n')
+
+
+
+
+######### PLAY GROUND ########
+#
+#histogram_dict = {}
+#histogram_suffix2 = {}
+#histogram_suffix3 = {}
+#histogram_suffix4 = {}
+#
+#
+#histogram_prefix2 = {}
+#histogram_prefix3 = {}
+#histogram_prefix4 = {}
+#
+#for word in V_tot_tmp:
+#    if word[0].isdigit(): continue
+#    if (len(word) > 1):
+#        histogram_prefix2[word[:2]] = 0
+#    if (len(word) > 2):
+#        histogram_prefix3[word[:3]] = 0
+#    if (len(word) > 3):
+#        histogram_prefix4[word[:4]] = 0
+#
+#for word in V_tot_tmp:
+#    if word[0].isdigit(): continue
+#    if len(word) > 1:
+#        histogram_prefix2[word[:2]] += 1
+#        
+#    if len(word) > 2:
+#        histogram_prefix3[word[:3]] += 1
+#        
+#    if len(word) > 3:
+#        histogram_prefix4[word[:4]] += 1
+#
+#prefix_2 = []        
+#for key in histogram_prefix2.keys():
+#    if histogram_prefix2[key] > 10:
+#        prefix_2.append(key);
+#        print(key,histogram_prefix2[key])
+#        
+#        
+#prefix_3 = []        
+#for key in histogram_prefix3.keys():
+#    if histogram_prefix3[key] > 10:
+#        prefix_3.append(key);
+#        print(key,histogram_prefix3[key])
+#
+#
+#prefix_4 = []        
+#for key in histogram_prefix4.keys():
+#    if histogram_prefix4[key] > 10:
+#        prefix_4.append(key);
+#        print(key,histogram_prefix4[key])
+#        
+#        
+#pref_dict={}
+#entropy_2 = {}
+#p_dict = {}
+#for tag in T:
+#    pref_dict[tag]=0
+#
+#for suff in prefix_2:
+#    for sen in data:
+#        for word in sen:
+#            if len(word) > 1:
+#                if word[-2:]==suff:
+#                    pref_dict[data_tag[data.index(sen)][sen.index(word)]] +=1 
+#    
+#    enropy = 0
+#    for key in pref_dict.keys():
+#        p_dict[key] = pref_dict[key] / sum(pref_dict.values())
+#    plist = []
+#    for val in p_dict.values():
+#        if val != 0:            
+#            plist.append(val)
+#    print(max(p_dict.values()))
+#    
+#for suff in prefix_3:
+#    for sen in data:
+#        for word in sen:
+#            if len(word) > 1:
+#                if word[-2:]==suff:
+#                    pref_dict[data_tag[data.index(sen)][sen.index(word)]] +=1 
+#    
+#    enropy = 0
+#    for key in pref_dict.keys():
+#        p_dict[key] = pref_dict[key] / sum(pref_dict.values())
+#    plist = []
+#    for val in p_dict.values():
+#        if val != 0:            
+#            plist.append(val)
+#    print(max(p_dict.values()))
+##    enropy = sum(p*np.log(p) for p in plist)
+##    print("{}:  {}".format(suff,enropy))
+####################################################################################3
+#
+#for tag in T_with_start:
+#    histogram_dict[tag] = 0
+#    
+#for sen,tags in zip(test,test_tag):
+#    idx = 0
+#    for word in sen:
+#        if word[0].isdigit():
+#           histogram_dict[tags[idx]] +=1
+#        idx += 1
+#
+#T_test_dict = {}
+#for word in V_tot_tmp:
+#    if (len(word) > 1):
+#        histogram_suffix2[word[-2:]] = 0
+#    if (len(word) > 2):
+#        histogram_suffix3[word[-3:]] = 0
+#    if (len(word) > 3):
+#        histogram_suffix4[word[-4:]] = 0
+#
+#for word in V_tot_tmp:
+#    if len(word) > 1:
+#        histogram_suffix2[word[-2:]] += 1
+#        
+#    if len(word) > 2:
+#        histogram_suffix3[word[-3:]] += 1
+#        
+#    if len(word) > 3:
+#        histogram_suffix4[word[-4:]] += 1
+#
+#suffix_2 = []        
+#for key in histogram_suffix2.keys():
+#    if histogram_suffix2[key] > 10:
+#        suffix_2.append(key);
+#        print(key,histogram_suffix2[key])
+#        
+#        
+#suffix_3 = []        
+#for key in histogram_suffix3.keys():
+#    if histogram_suffix3[key] > 10:
+#        suffix_3.append(key);
+#        print(key,histogram_suffix3[key])
+#
+#
+#suffix_4 = []        
+#for key in histogram_suffix4.keys():
+#    if histogram_suffix4[key] > 10:
+#        suffix_4.append(key);
+#        print(key,histogram_suffix4[key])
+#
+#V_tot_tmp = V + V_test 
+#V_tot = set(V_tot_tmp)
+#
+#suff_dict={}
+#T_suff2 = T
+#T_suff3 = T
+#T_suff4 = T
+#entropy_2 = {}
+#p_dict = {}
+#for tag in T:
+#    suff_dict[tag]=0
+#
+#for suff in suffix_2:
+#    for sen in data:
+#        for word in sen:
+#            if len(word) > 1:
+#                if word[-2:]==suff:
+#                    suff_dict[data_tag[data.index(sen)][sen.index(word)]] +=1 
+#    
+#    enropy = 0
+#    for key in suff_dict.keys():
+#        p_dict[key] = suff_dict[key] / sum(suff_dict.values())
+#    plist = []
+#    for val in p_dict.values():
+#        if val != 0:            
+#            plist.append(val)
+#    enropy = sum(p*np.log(p) for p in plist)
+#    print("{}:  {}".format(suff,enropy))
+#    
+#for suff in suffix_3:
+#    for sen in data:
+#        for word in sen:
+#            if len(word) > 2:
+#                if word[-3:]==suff:
+#                    suff_dict[data_tag[data.index(sen)][sen.index(word)]] +=1 
+#    
+#    enropy = 0
+#    for key in suff_dict.keys():
+#        p_dict[key] = suff_dict[key] / sum(suff_dict.values())
+#    plist = []
+#    for val in p_dict.values():
+#        if val is not 0:            
+#            plist.append(val)
+#    enropy = sc.stats.entropy(plist)
+#    print("{}:  {}".format(suff,enropy))
+#
+#for suff in suffix_4:
+#    for sen in data:
+#        for word in sen:
+#            if len(word) > 3:
+#                if word[-4:]==suff:
+#                    suff_dict[data_tag[data.index(sen)][sen.index(word)]] +=1 
+#    
+#    enropy = 0
+#    for key in suff_dict.keys():
+#        p_dict[key] = suff_dict[key] / sum(suff_dict.values())
+#    plist = []
+#    for val in p_dict.values():
+#        if val is not 0:            
+#            plist.append(val)
+#    enropy = sc.stats.entropy(plist)
+#    print("{}:  {}".format(suff,enropy))
+#        
+#
+#
+#        
+#T_test_set = set(T_test_dict.items()) 
+#T_set = set(T_dict.items()) 
+#
+#for tag in T_test_set:
+#    if tag not in T_set:
+#        print(tag)
+#
+#for sen,tags in zip(test,test_tag):
+#    idx = 0
+#    for word in sen:
+#        if len(word) > 1:
+#            if word[0].isupper() and word[1].isupper():
+#                histogram_dict[tags[idx]] += 1
+#        idx += 1
+#            
+#           
+#for tag in T_set:
+#    if tag not in T_test_set:
+#        print(tag)
+#             
+#
+#V_comp = sorted(list(set(chain(*comp))))
+#
+#unknown_words = []
+#for word in V_comp:
+#    if word not in V and word not in :
+#        unknown_words.append(word)
+#        
+#        
