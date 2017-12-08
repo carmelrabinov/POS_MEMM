@@ -14,7 +14,7 @@ import copy
 from itertools import chain
 import random
 import os
-from scipy.optimize import fmin_l_bfgs_b
+from scipy.optimize import fmin_l_bfgs_b, fmin_bfgs, fmin_tnc
 from scipy.misc import logsumexp
 
 def data_preprocessing(data_path, test_path, pred_path):
@@ -131,21 +131,22 @@ def init_suffix_dicts(Vocabulary, threshold):
 
         return (suffix_2, suffix_3, suffix_4)
 
-def get_feature_vector_size():
+def get_feature_vector_size(mode):
     size_dict = {}
     size_dict['F100'] = V_size * T_size # represens word ant tag for all possible combinations
     size_dict['F103'] = T_size**3 # trigram of tags
     size_dict['F104'] = T_size**2 # bigram of tags
-    size_dict['F101_2'] = T_size*len(suffix_2) # all posible tags for each word in importnat suffix list
-    size_dict['F101_3'] = T_size*len(suffix_3) # all posible tags for each word in importnat suffix list
-    size_dict['F101_4'] = T_size*len(suffix_4) # all posible tags for each word in importnat suffix list
-    size_dict['F105'] = T_size # unigram of tag
-    size_dict['G1'] = T_size  # is current word a number + the current tag
-    size_dict['G2'] = T_size  # is current word starts with Upper case + the current tag
+    if mode == 'complex':
+        size_dict['F101_2'] = T_size*len(suffix_2) # all posible tags for each word in importnat suffix list
+        size_dict['F101_3'] = T_size*len(suffix_3) # all posible tags for each word in importnat suffix list
+        size_dict['F101_4'] = T_size*len(suffix_4) # all posible tags for each word in importnat suffix list
+        size_dict['F105'] = T_size # unigram of tag
+        size_dict['G1'] = T_size  # is current word a number + the current tag
+        size_dict['G2'] = T_size  # is current word starts with Upper case + the current tag
     
     return sum(size_dict.values())
 
-def get_features(word, tags, is_complex):
+def get_features(word, tags, mode):
     """
     :param word: the word
     :param tags: POS tags of the trigram as as a list <t(i-2), t(i-1), t(i)>
@@ -156,6 +157,7 @@ def get_features(word, tags, is_complex):
     # 1 if xi = x and ti = t
     try: 
         F100 = V_dict[word] * T_size + T_with_start_dict[tags[2]]
+#        print('F100: ',F100) #debug
         features.append(F100)
     except:  
         tmp = 0
@@ -164,14 +166,18 @@ def get_features(word, tags, is_complex):
     # trigram feature - 1 if <t(i-2),t(is),t(i)> = <t1,t2,t3>
     F103 = T_with_start_dict[tags[2]] * (T_size ** 2) + T_with_start_dict[tags[1]] * T_size + T_with_start_dict[tags[0]]
     features.append(F103 + F100_len)
-    F103_len = F100_len+ T_size**3
-    
+    F103_len = F100_len + T_size**3
+#    print('F103: ',F103) #debug
+
     # bigram feature - 1 if <t(i-1),t(i)> = <t1,t2>
     F104 = T_with_start_dict[tags[2]] * T_size + T_with_start_dict[tags[1]]
     features.append(F104 + F103_len)
     F104_len = F103_len + T_size**2
-    
-    if is_complex:
+#    print('F104: ',F104) #debug
+
+    if mode=='complex':
+        print('entered complex mode',F103) #debug
+
         # F101: suffix in last 2/3/4 letters suffix lists && tag <t(i)>
         if len(word) > 1 and word[-2:] in suffix_2.keys():
             F101_2 = suffix_2[word[-2:]]*T_size + T_with_start_dict[tags[2]]
@@ -217,9 +223,8 @@ def get_features(word, tags, is_complex):
         G2_len = G1_len + T_size
 
         # G3 : is the cuurent word starts in Upper case and tag is t_i?
-
         
-        
+            
     return features
 
 
@@ -237,7 +242,7 @@ def get_word_all_possible_tags_features(xi, th, mode):
 
         # iterate over all the words in the sentence besides START and STOP special signs
         for i, tag in enumerate(T):
-            si_features[i, :] = get_features(xi, [th[0], th[1], tag], complex_mode)
+            si_features[i, :] = get_features(xi, [th[0], th[1], tag], mode)
 
         return si_features
 
@@ -253,7 +258,7 @@ def calc_all_possible_tags_probabilities(xi, t1, t2, w):
     """
     denominator = np.zeros(len(T))
     for i, tag in enumerate(T):
-        denominator[i] = np.sum(w[get_base_features(xi, [t2, t1, tag])])
+        denominator[i] = np.sum(w[get_features(xi, [t2, t1, tag], mode)])
     return softmax(denominator,denominator)
 
 
@@ -304,7 +309,7 @@ def train_online(max_epoch, data, data_tag, lambda_rate, lr):
             for i, word in enumerate(sentence[:-1]):
                 if i == 0 or i == 1:
                     continue          
-                empirical_counts[get_features(word, tag_sentence[i-2:i+1], complex_mode)] += 1
+                empirical_counts[get_features(word, tag_sentence[i-2:i+1], mode)] += 1
 
 
             expected_counts = np.zeros(feature_size, dtype=np.float64)
@@ -363,13 +368,13 @@ def loss(w, data, data_tag, lambda_rate, feature_size, T, T_size):
         for i, word in enumerate(sentence[:-1]):
             if i == 0 or i == 1:
                 continue 
-            features_inx = get_base_features(word, tag_sentence[i-2:i+1])
+            features_inx = get_features(word, tag_sentence[i-2:i+1], mode)
             empirical_loss += np.sum(w[features_inx])
             
             feats = get_word_all_possible_tags_features(word, [tag_sentence[i - 2], tag_sentence[i - 1]], 'base')
             expected_loss += logsumexp(np.sum(w[feats], axis=1))
         loss_ += empirical_loss - expected_loss - normalization_loss
-    return loss_
+    return (-1)*loss_
 
 
 def softmax(numerator, denominator):
@@ -391,7 +396,7 @@ def loss_grads(w, data, data_tag, lambda_rate, feature_size, T, T_size):
         for i, word in enumerate(sentence[:-1]):
             if i == 0 or i == 1:
                 continue          
-            empirical_counts[get_base_features(word, tag_sentence[i-2:i+1])] += 1
+            empirical_counts[get_features(word, tag_sentence[i-2:i+1], mode)] += 1
     
         expected_counts = np.zeros(feature_size, dtype=np.float64)
     
@@ -426,13 +431,12 @@ def loss_grads(w, data, data_tag, lambda_rate, feature_size, T, T_size):
     print('max_grads w: {}, {}'.format(np.max(w_grads), np.sum(w_grads > 0.1)))
     # np.clip(w_grads, None, 400, out=w_grads)
     # print('max_cliped_grads w: {}, {}'.format(np.max(w_grads), np.sum(w_grads > 20)))
-    return w_grads
+    return (-1)*w_grads
 
 
 def train_bfgs(data, data_tag, lambda_rate, T, T_size):
-    feature_size = T_size ** 3 + T_size ** 2 + V_size * T_size
     w0 = np.zeros(feature_size, dtype=np.float64)
-    return fmin_l_bfgs_b(func=loss, x0=w0, fprime=loss_grads, args=(data, data_tag, lambda_rate, feature_size, T, T_size))
+    return fmin_l_bfgs_b(loss, x0=w0, fprime=loss_grads, args=(data, data_tag, lambda_rate, feature_size, T, T_size))
 
 
 def viterby_predictor(corpus, w, prob_mat = None):
@@ -531,15 +535,13 @@ def viterby_predictor(corpus, w, prob_mat = None):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('resultsFn', help='output results')
-    parser.add_argument('-max_epoch', type=int, default=4)
-    parser.add_argument('-lr', type=np.float64, default=0.1)
     parser.add_argument('-lambda_rate', type=np.float64, default=0.5)
-    parser.add_argument('-noShuffle', action='store_false')
     parser.add_argument('-toy', action='store_true')
     parser.add_argument('-input_path', type=str, default=None)
     parser.add_argument('-end', type=int, default=0)
-    parser.add_argument('-complex_mode', action='store_true')
     parser.add_argument('-suff_threshold', type=int, default=10)
+    parser.add_argument('-pref_threshold', type=int, default=10)
+    parser.add_argument('-mode', type=str, default='base')
 
     parser.parse_args(namespace=sys.modules['__main__'])
 
@@ -569,9 +571,7 @@ if __name__ == '__main__':
 
 
 
-    (V, T_with_start, data, data_tag, test, test_tag) = data_preprocessing(data_path, test_path)
 
->>>>>>> 09447ccf270e78c77f8c1f15bbedcef2ea25794f
     V_size = len(V)
     T_size = len(T_with_start)
     T = [x for x in T_with_start if (x != '/*' and x != '/STOP')]
@@ -586,14 +586,23 @@ if __name__ == '__main__':
     for i,tag in enumerate(V):
         V_dict[tag] = i  
     
-    feature_size = get_feature_vector_size() 
+    feature_size = get_feature_vector_size(mode) 
 
-    max_epoch = 1
-    lambda_rate = 0.5
-    lr = 0.1
-    complex_mode = True
-    (w, timeL) = train(max_epoch, data, data_tag, lambda_rate, lr)
     resultsFn = debug
+
+    t0 = time.time()
+    lambda_rate = 0.1
+    
+    # w_opt = train(20, data, data_tag, lambda_rate, 0.008)
+    mode = 'base'
+    optimal_params = train_bfgs(data, data_tag, lambda_rate, T, T_size)
+    if optimal_params[2]['warnflag']:
+        print('Error in training')
+        exit()
+    else:
+        print('Done in time: {}'.format(time.time() - t0))
+        w_opt = optimal_params[0]
+
 
     results_path = project_dir + '\\train_results\\' + resultsFn
     if not os.path.exists(results_path):
