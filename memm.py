@@ -84,21 +84,68 @@ def data_preprocessing(data_path, test_path, pred_path):
     
     return (V, T, data, data_tag, test, test_tag, pred, V_T)
 
+
+
+
+
+for word in V_tot_tmp:
+    if word[0].isdigit(): continue
+    if len(word) > 1:
+        histogram_prefix2[word[:2]] += 1
+        
+    if len(word) > 2:
+        histogram_prefix3[word[:3]] += 1
+        
+    if len(word) > 3:
+        histogram_prefix4[word[:4]] += 1
+
+prefix_2 = []        
+for key in histogram_prefix2.keys():
+    if histogram_prefix2[key] > 10:
+        prefix_2.append(key);
+        print(key,histogram_prefix2[key])
+        
+        
+prefix_3 = []        
+for key in histogram_prefix3.keys():
+    if histogram_prefix3[key] > 10:
+        prefix_3.append(key);
+        print(key,histogram_prefix3[key])
+
+
+prefix_4 = []        
+for key in histogram_prefix4.keys():
+    if histogram_prefix4[key] > 10:
+        prefix_4.append(key);
+        print(key,histogram_prefix4[key])
+        
+        
 def init_suffix_dicts(Vocabulary, threshold):
         
+        #declare histograms that will countain count in the corpus for each prefix and suffix
         histogram_suffix2 = {}
-        histogram_suffix2 = {}
-        histogram_suffix2 = {}
+        histogram_suffix3 = {}
+        histogram_suffix4 = {}
         
+        histogram_prefix2 = {}
+        histogram_prefix3 = {}
+        histogram_prefix4 = {}
+        
+        #init the histograms to 0 for all relevant prefixes and suffixes
         for word in Vocabulary:
+            if word[-1].isdigit(): continue
             if (len(word) > 1):
                 histogram_suffix2[word[-2:]] = 0
+                histogram_prefix2[word[:2]] = 0
             if (len(word) > 2):
                 histogram_suffix3[word[-3:]] = 0
+                histogram_prefix3[word[:3]] = 0
             if (len(word) > 3):
                 histogram_suffix4[word[-4:]] = 0
-        
-        for word in V_tot:
+                histogram_prefix4[word[:4]] = 0
+
+        for word in Vocabulary:
+            if word[-1].isdigit(): continue
             if len(word) > 1:
                 histogram_suffix2[word[-2:]] += 1
                 
@@ -157,7 +204,6 @@ def get_features(word, tags, mode):
     # 1 if xi = x and ti = t
     try: 
         F100 = V_dict[word] * T_size + T_with_start_dict[tags[2]]
-#        print('F100: ',F100) #debug
         features.append(F100)
     except:  
         tmp = 0
@@ -167,29 +213,37 @@ def get_features(word, tags, mode):
     F103 = T_with_start_dict[tags[2]] * (T_size ** 2) + T_with_start_dict[tags[1]] * T_size + T_with_start_dict[tags[0]]
     features.append(F103 + F100_len)
     F103_len = F100_len + T_size**3
-#    print('F103: ',F103) #debug
 
     # bigram feature - 1 if <t(i-1),t(i)> = <t1,t2>
     F104 = T_with_start_dict[tags[2]] * T_size + T_with_start_dict[tags[1]]
     features.append(F104 + F103_len)
     F104_len = F103_len + T_size**2
-#    print('F104: ',F104) #debug
 
     if mode=='complex':
-        print('entered complex mode',F103) #debug
 
         # F101: suffix in last 2/3/4 letters suffix lists && tag <t(i)>
         if len(word) > 1 and word[-2:] in suffix_2.keys():
             F101_2 = suffix_2[word[-2:]]*T_size + T_with_start_dict[tags[2]]
             features.append(F101_2 + F104_len)
+            
+#            #debug:
+#            if F101_2 + F104_len > feature_size:
+#                print('F101_2: ', F101_2 + F104_len)
+            
         F101_2_len = F104_len + T_size*len(suffix_2)  
         if len(word) > 2 and word[-3:] in suffix_3.keys():
             F101_3 = suffix_3[word[-3:]]*T_size + T_with_start_dict[tags[2]]
             features.append(F101_3 + F101_2_len)
+#            #debug:
+#            if F101_3 + F101_2_len > feature_size:
+#                print('F101_3: ', F101_3 + F101_2_len)
         F101_3_len = F101_2_len + T_size*len(suffix_3)
         if len(word) > 3 and word[-4:] in suffix_4.keys():
             F101_4 = suffix_4[word[-4:]]*T_size + T_with_start_dict[tags[2]]
             features.append(F101_4 + F101_3_len)
+            #debug:
+#            if F101_4 + F101_3_len > feature_size:
+#                print('F101_4: ', F101_4 + F101_3_len)
         F101_4_len = F101_3_len + T_size*len(suffix_4)
         
         F101_len = F101_4_len
@@ -201,7 +255,11 @@ def get_features(word, tags, mode):
         # F105: tag is <t(i)>
         F105 = T_with_start_dict[tags[2]]
         features.append(F105 + F102_len)
-
+        
+        #debug:
+#        if F105 + F102_len > feature_size:
+#            print('F101_5: ', F105 + F102_len)
+            
         F105_len = F102_len + T_size    
         
         # F106: 
@@ -214,6 +272,9 @@ def get_features(word, tags, mode):
         if word[0].isdigit():
             G1 = T_with_start_dict[tags[2]]
             features.append(G1 + F107_len)
+            
+            #debug:
+#            if G1
         G1_len = F107_len + T_size
         
         # G2 : is the cuurent word starts in Upper case and tag is t_i?
@@ -224,7 +285,11 @@ def get_features(word, tags, mode):
 
         # G3 : is the cuurent word starts in Upper case and tag is t_i?
         
+        ##debug - all:
+
             
+
+   
     return features
 
 
@@ -668,153 +733,239 @@ if __name__ == '__main__':
 
 ######### PLAY GROUND ########
 
-#histogram_dict = {}
-#histogram_suffix2 = {}
-#histogram_suffix3 = {}
-#histogram_suffix4 = {}
-#histogram_prefix = {}
-#
-#for tag in T_with_start:
-#    histogram_dict[tag] = 0
-#    
-#for sen,tags in zip(test,test_tag):
-#    idx = 0
-#    for word in sen:
-#        if word[0].isdigit():
-#           histogram_dict[tags[idx]] +=1
-#        idx += 1
-#
-#T_test_dict = {}
-#for word in V_tot_tmp:
-#    if (len(word) > 1):
-#        histogram_suffix2[word[-2:]] = 0
-#    if (len(word) > 2):
-#        histogram_suffix3[word[-3:]] = 0
-#    if (len(word) > 3):
-#        histogram_suffix4[word[-4:]] = 0
-#
-#for word in V_tot_tmp:
-#    if len(word) > 1:
-#        histogram_suffix2[word[-2:]] += 1
-#        
-#    if len(word) > 2:
-#        histogram_suffix3[word[-3:]] += 1
-#        
-#    if len(word) > 3:
-#        histogram_suffix4[word[-4:]] += 1
-#
-#suffix_2 = []        
-#for key in histogram_suffix2.keys():
-#    if histogram_suffix2[key] > 10:
-#        suffix_2.append(key);
-#        print(key,histogram_suffix2[key])
-#        
-#        
-#suffix_3 = []        
-#for key in histogram_suffix3.keys():
-#    if histogram_suffix3[key] > 10:
-#        suffix_3.append(key);
-#        print(key,histogram_suffix3[key])
-#
-#
-#suffix_4 = []        
-#for key in histogram_suffix4.keys():
-#    if histogram_suffix4[key] > 10:
-#        suffix_4.append(key);
-#        print(key,histogram_suffix4[key])
-#
-#V_tot_tmp = V + V_test 
-#V_tot = set(V_tot_tmp)
-#
-#suff_dict={}
-#T_suff2 = T
-#T_suff3 = T
-#T_suff4 = T
-#entropy_2 = {}
-#p_dict = {}
-#for tag in T:
-#    suff_dict[tag]=0
-#
-#for suff in suffix_2:
-#    for sen in data:
-#        for word in sen:
-#            if len(word) > 1:
-#                if word[-2:]==suff:
-#                    suff_dict[data_tag[data.index(sen)][sen.index(word)]] +=1 
-#    
-#    enropy = 0
-#    for key in suff_dict.keys():
-#        p_dict[key] = suff_dict[key] / sum(suff_dict.values())
-#    plist = []
-#    for val in p_dict.values():
-#        if val != 0:            
-#            plist.append(val)
+histogram_dict = {}
+histogram_suffix2 = {}
+histogram_suffix3 = {}
+histogram_suffix4 = {}
+
+
+histogram_prefix2 = {}
+histogram_prefix3 = {}
+histogram_prefix4 = {}
+
+for word in V_tot_tmp:
+    if word[0].isdigit(): continue
+    if (len(word) > 1):
+        histogram_prefix2[word[:2]] = 0
+    if (len(word) > 2):
+        histogram_prefix3[word[:3]] = 0
+    if (len(word) > 3):
+        histogram_prefix4[word[:4]] = 0
+
+for word in V_tot_tmp:
+    if word[0].isdigit(): continue
+    if len(word) > 1:
+        histogram_prefix2[word[:2]] += 1
+        
+    if len(word) > 2:
+        histogram_prefix3[word[:3]] += 1
+        
+    if len(word) > 3:
+        histogram_prefix4[word[:4]] += 1
+
+prefix_2 = []        
+for key in histogram_prefix2.keys():
+    if histogram_prefix2[key] > 10:
+        prefix_2.append(key);
+        print(key,histogram_prefix2[key])
+        
+        
+prefix_3 = []        
+for key in histogram_prefix3.keys():
+    if histogram_prefix3[key] > 10:
+        prefix_3.append(key);
+        print(key,histogram_prefix3[key])
+
+
+prefix_4 = []        
+for key in histogram_prefix4.keys():
+    if histogram_prefix4[key] > 10:
+        prefix_4.append(key);
+        print(key,histogram_prefix4[key])
+        
+        
+pref_dict={}
+entropy_2 = {}
+p_dict = {}
+for tag in T:
+    pref_dict[tag]=0
+
+for suff in prefix_2:
+    for sen in data:
+        for word in sen:
+            if len(word) > 1:
+                if word[-2:]==suff:
+                    pref_dict[data_tag[data.index(sen)][sen.index(word)]] +=1 
+    
+    enropy = 0
+    for key in pref_dict.keys():
+        p_dict[key] = pref_dict[key] / sum(pref_dict.values())
+    plist = []
+    for val in p_dict.values():
+        if val != 0:            
+            plist.append(val)
+    print(max(p_dict.values()))
+    
+for suff in prefix_3:
+    for sen in data:
+        for word in sen:
+            if len(word) > 1:
+                if word[-2:]==suff:
+                    pref_dict[data_tag[data.index(sen)][sen.index(word)]] +=1 
+    
+    enropy = 0
+    for key in pref_dict.keys():
+        p_dict[key] = pref_dict[key] / sum(pref_dict.values())
+    plist = []
+    for val in p_dict.values():
+        if val != 0:            
+            plist.append(val)
+    print(max(p_dict.values()))
 #    enropy = sum(p*np.log(p) for p in plist)
 #    print("{}:  {}".format(suff,enropy))
-#    
-#for suff in suffix_3:
-#    for sen in data:
-#        for word in sen:
-#            if len(word) > 2:
-#                if word[-3:]==suff:
-#                    suff_dict[data_tag[data.index(sen)][sen.index(word)]] +=1 
-#    
-#    enropy = 0
-#    for key in suff_dict.keys():
-#        p_dict[key] = suff_dict[key] / sum(suff_dict.values())
-#    plist = []
-#    for val in p_dict.values():
-#        if val is not 0:            
-#            plist.append(val)
-#    enropy = sc.stats.entropy(plist)
-#    print("{}:  {}".format(suff,enropy))
-#
-#for suff in suffix_4:
-#    for sen in data:
-#        for word in sen:
-#            if len(word) > 3:
-#                if word[-4:]==suff:
-#                    suff_dict[data_tag[data.index(sen)][sen.index(word)]] +=1 
-#    
-#    enropy = 0
-#    for key in suff_dict.keys():
-#        p_dict[key] = suff_dict[key] / sum(suff_dict.values())
-#    plist = []
-#    for val in p_dict.values():
-#        if val is not 0:            
-#            plist.append(val)
-#    enropy = sc.stats.entropy(plist)
-#    print("{}:  {}".format(suff,enropy))
-#        
-#
-#
-#        
-#T_test_set = set(T_test_dict.items()) 
-#T_set = set(T_dict.items()) 
-#
-#for tag in T_test_set:
-#    if tag not in T_set:
-#        print(tag)
-#
-#for sen,tags in zip(test,test_tag):
-#    idx = 0
-#    for word in sen:
-#        if len(word) > 1:
-#            if word[0].isupper() and word[1].isupper():
-#                histogram_dict[tags[idx]] += 1
-#        idx += 1
-#            
-#           
-#for tag in T_set:
-#    if tag not in T_test_set:
-#        print(tag)
-#             
-#
-#V_comp = sorted(list(set(chain(*comp))))
-#
-#unknown_words = []
-#for word in V_comp:
-#    if word not in V and word not in :
-#        unknown_words.append(word)
-#        
-#        
+###################################################################################3
+
+for tag in T_with_start:
+    histogram_dict[tag] = 0
+    
+for sen,tags in zip(test,test_tag):
+    idx = 0
+    for word in sen:
+        if word[0].isdigit():
+           histogram_dict[tags[idx]] +=1
+        idx += 1
+
+T_test_dict = {}
+for word in V_tot_tmp:
+    if (len(word) > 1):
+        histogram_suffix2[word[-2:]] = 0
+    if (len(word) > 2):
+        histogram_suffix3[word[-3:]] = 0
+    if (len(word) > 3):
+        histogram_suffix4[word[-4:]] = 0
+
+for word in V_tot_tmp:
+    if len(word) > 1:
+        histogram_suffix2[word[-2:]] += 1
+        
+    if len(word) > 2:
+        histogram_suffix3[word[-3:]] += 1
+        
+    if len(word) > 3:
+        histogram_suffix4[word[-4:]] += 1
+
+suffix_2 = []        
+for key in histogram_suffix2.keys():
+    if histogram_suffix2[key] > 10:
+        suffix_2.append(key);
+        print(key,histogram_suffix2[key])
+        
+        
+suffix_3 = []        
+for key in histogram_suffix3.keys():
+    if histogram_suffix3[key] > 10:
+        suffix_3.append(key);
+        print(key,histogram_suffix3[key])
+
+
+suffix_4 = []        
+for key in histogram_suffix4.keys():
+    if histogram_suffix4[key] > 10:
+        suffix_4.append(key);
+        print(key,histogram_suffix4[key])
+
+V_tot_tmp = V + V_test 
+V_tot = set(V_tot_tmp)
+
+suff_dict={}
+T_suff2 = T
+T_suff3 = T
+T_suff4 = T
+entropy_2 = {}
+p_dict = {}
+for tag in T:
+    suff_dict[tag]=0
+
+for suff in suffix_2:
+    for sen in data:
+        for word in sen:
+            if len(word) > 1:
+                if word[-2:]==suff:
+                    suff_dict[data_tag[data.index(sen)][sen.index(word)]] +=1 
+    
+    enropy = 0
+    for key in suff_dict.keys():
+        p_dict[key] = suff_dict[key] / sum(suff_dict.values())
+    plist = []
+    for val in p_dict.values():
+        if val != 0:            
+            plist.append(val)
+    enropy = sum(p*np.log(p) for p in plist)
+    print("{}:  {}".format(suff,enropy))
+    
+for suff in suffix_3:
+    for sen in data:
+        for word in sen:
+            if len(word) > 2:
+                if word[-3:]==suff:
+                    suff_dict[data_tag[data.index(sen)][sen.index(word)]] +=1 
+    
+    enropy = 0
+    for key in suff_dict.keys():
+        p_dict[key] = suff_dict[key] / sum(suff_dict.values())
+    plist = []
+    for val in p_dict.values():
+        if val is not 0:            
+            plist.append(val)
+    enropy = sc.stats.entropy(plist)
+    print("{}:  {}".format(suff,enropy))
+
+for suff in suffix_4:
+    for sen in data:
+        for word in sen:
+            if len(word) > 3:
+                if word[-4:]==suff:
+                    suff_dict[data_tag[data.index(sen)][sen.index(word)]] +=1 
+    
+    enropy = 0
+    for key in suff_dict.keys():
+        p_dict[key] = suff_dict[key] / sum(suff_dict.values())
+    plist = []
+    for val in p_dict.values():
+        if val is not 0:            
+            plist.append(val)
+    enropy = sc.stats.entropy(plist)
+    print("{}:  {}".format(suff,enropy))
+        
+
+
+        
+T_test_set = set(T_test_dict.items()) 
+T_set = set(T_dict.items()) 
+
+for tag in T_test_set:
+    if tag not in T_set:
+        print(tag)
+
+for sen,tags in zip(test,test_tag):
+    idx = 0
+    for word in sen:
+        if len(word) > 1:
+            if word[0].isupper() and word[1].isupper():
+                histogram_dict[tags[idx]] += 1
+        idx += 1
+            
+           
+for tag in T_set:
+    if tag not in T_test_set:
+        print(tag)
+             
+
+V_comp = sorted(list(set(chain(*comp))))
+
+unknown_words = []
+for word in V_comp:
+    if word not in V and word not in :
+        unknown_words.append(word)
+        
+        
