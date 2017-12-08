@@ -14,7 +14,8 @@ import copy
 from itertools import chain
 import random
 import os
-
+from scipy.optimize import fmin_l_bfgs_b
+from scipy.misc import logsumexp
 
 def data_preprocessing(data_path, test_path, pred_path):
     """
@@ -250,17 +251,32 @@ def calc_all_possible_tags_probabilities(xi, t1, t2, w):
     :param w: weights vector
     :return: a list for all possible ti probabilities p(ti|xi,w) as float64
     """
-    sum_value = np.zeros(len(T))
+    denominator = np.zeros(len(T))
     for i, tag in enumerate(T):
-        sum_value[i] = np.sum(w[get_features(xi, [t2, t1, tag])], complex_mode)
-    tmp = np.exp(sum_value)
-    return tmp / np.sum(tmp)
+        denominator[i] = np.sum(w[get_base_features(xi, [t2, t1, tag])])
+    return softmax(denominator,denominator)
 
 
 def train(max_epoch, data, data_tag, lambda_rate, lr):
     noShuffle = False
 
     # init
+    w = np.zeros(feature_size, dtype=np.float64)
+
+    start_time = time.time()
+
+    for epoch in range(max_epoch):
+        w_grads = loss_grads(w, data, data_tag, lambda_rate, feature_size, T, T_size)
+        print('finished epoch {} in {} min'.format(epoch + 1, (time.time() - start_time) / 60))
+        w += w_grads * lr
+
+    return (w)
+
+
+def train_online(max_epoch, data, data_tag, lambda_rate, lr):
+
+    # init
+    feature_size = T_size ** 3 + T_size ** 2 + V_size * T_size
     w = np.zeros(feature_size, dtype=np.float64)
 
     weightsL = []
@@ -283,12 +299,13 @@ def train(max_epoch, data, data_tag, lambda_rate, lr):
 
             normalization_counts = lambda_rate * w
 
-            
+
             empirical_counts = np.zeros(feature_size, dtype=np.float64)
             for i, word in enumerate(sentence[:-1]):
                 if i == 0 or i == 1:
                     continue          
                 empirical_counts[get_features(word, tag_sentence[i-2:i+1], complex_mode)] += 1
+
 
             expected_counts = np.zeros(feature_size, dtype=np.float64)
 
@@ -331,6 +348,91 @@ def train(max_epoch, data, data_tag, lambda_rate, lr):
             pickle.dump([weightsL, timeL], f)
 
     return (w, timeL)
+
+
+def loss(w, data, data_tag, lambda_rate, feature_size, T, T_size):
+    
+    loss_ = 0
+    for h, sentence in enumerate(data):
+        tag_sentence = data_tag[h]
+        normalization_loss = np.sum(np.square(w)) * lambda_rate/2
+    
+        empirical_loss = 0
+        expected_loss = 0
+    
+        for i, word in enumerate(sentence[:-1]):
+            if i == 0 or i == 1:
+                continue 
+            features_inx = get_base_features(word, tag_sentence[i-2:i+1])
+            empirical_loss += np.sum(w[features_inx])
+            
+            feats = get_word_all_possible_tags_features(word, [tag_sentence[i - 2], tag_sentence[i - 1]], 'base')
+            expected_loss += logsumexp(np.sum(w[feats], axis=1))
+        loss_ += empirical_loss - expected_loss - normalization_loss
+    return loss_
+
+
+def softmax(numerator, denominator):
+    denominator_max = np.max(denominator)
+    denominator -= denominator_max
+    numerator -= denominator_max
+    return np.exp(numerator) / np.sum(np.exp(denominator))
+
+
+def loss_grads(w, data, data_tag, lambda_rate, feature_size, T, T_size):
+
+    w_grads = np.zeros(feature_size, dtype=np.float64)
+    print('max w: {}, {}'.format(np.max(w), np.sum(w > 20)))
+    for h, sentence in enumerate(data):
+        tag_sentence = data_tag[h]
+    
+        normalization_counts = lambda_rate * w
+        empirical_counts = np.zeros(feature_size, dtype=np.float64)
+        for i, word in enumerate(sentence[:-1]):
+            if i == 0 or i == 1:
+                continue          
+            empirical_counts[get_base_features(word, tag_sentence[i-2:i+1])] += 1
+    
+        expected_counts = np.zeros(feature_size, dtype=np.float64)
+    
+        # calculate p_array which contains p(y|x,w)
+        p_array = np.zeros((len(sentence[2:-1]), T_size - 2), dtype=np.float64)
+        for i, word in enumerate(sentence[:-1]):
+            if i == 0 or i == 1:
+                continue
+            feats = get_word_all_possible_tags_features(word, [tag_sentence[i - 2], tag_sentence[i - 1]], 'base')
+            for j, tag in enumerate(T):
+                tag_feat = feats[j, :]
+                # denominator = np.sum(w[feats], axis=1)
+                # numerator = np.sum(w[tag_feat])
+                p_array[i - 2, j] = softmax(np.sum(w[tag_feat]), np.sum(w[feats], axis=1))
+                # need to insert something that checks for inf or nan like:  np.isinf(a).any()
+
+        # calc f_array which contains f(x,y)
+        f_array = np.zeros((len(sentence[2:-1]), T_size - 2, 3), dtype=np.int64)
+        for i, word in enumerate(sentence[:-1]):
+            if i == 0 or i == 1:
+                continue
+            f_array[i - 2, :, :] = get_word_all_possible_tags_features(word, [tag_sentence[i - 2], tag_sentence[i - 1]], 'base')
+    
+        # calc empirical counts
+        for i, word in enumerate(sentence[:-1]):
+            if i == 0 or i == 1:
+                continue
+            for j, tag in enumerate(T):
+                expected_counts[f_array[i - 2, j, :]] += p_array[i - 2, j]
+    
+        w_grads += empirical_counts - expected_counts - normalization_counts
+    print('max_grads w: {}, {}'.format(np.max(w_grads), np.sum(w_grads > 0.1)))
+    # np.clip(w_grads, None, 400, out=w_grads)
+    # print('max_cliped_grads w: {}, {}'.format(np.max(w_grads), np.sum(w_grads > 20)))
+    return w_grads
+
+
+def train_bfgs(data, data_tag, lambda_rate, T, T_size):
+    feature_size = T_size ** 3 + T_size ** 2 + V_size * T_size
+    w0 = np.zeros(feature_size, dtype=np.float64)
+    return fmin_l_bfgs_b(func=loss, x0=w0, fprime=loss_grads, args=(data, data_tag, lambda_rate, feature_size, T, T_size))
 
 
 def viterby_predictor(corpus, w, prob_mat = None):
@@ -431,7 +533,7 @@ if __name__ == '__main__':
     parser.add_argument('resultsFn', help='output results')
     parser.add_argument('-max_epoch', type=int, default=4)
     parser.add_argument('-lr', type=np.float64, default=0.1)
-    parser.add_argument('-lambda_rate', type=np.float64, default=0.1)
+    parser.add_argument('-lambda_rate', type=np.float64, default=0.5)
     parser.add_argument('-noShuffle', action='store_false')
     parser.add_argument('-toy', action='store_true')
     parser.add_argument('-input_path', type=str, default=None)
@@ -460,9 +562,16 @@ if __name__ == '__main__':
     if toy:
         data_path = project_dir + '\\data\\debug.wtag'
         test_path = project_dir + '\\data\\debug.wtag'
+    
     (V, T_with_start, data, data_tag, test, test_tag, comp, V_dev) = data_preprocessing(data_path, test_path, comp_path)
     V_Total = set(V+V_dev)
     (suffix_2, suffix_3, suffix_4) = init_suffix_dicts(V_Total,suff_threshold)
+
+
+
+    (V, T_with_start, data, data_tag, test, test_tag) = data_preprocessing(data_path, test_path)
+
+>>>>>>> 09447ccf270e78c77f8c1f15bbedcef2ea25794f
     V_size = len(V)
     T_size = len(T_with_start)
     T = [x for x in T_with_start if (x != '/*' and x != '/STOP')]
@@ -485,15 +594,14 @@ if __name__ == '__main__':
     complex_mode = True
     (w, timeL) = train(max_epoch, data, data_tag, lambda_rate, lr)
     resultsFn = debug
+
     results_path = project_dir + '\\train_results\\' + resultsFn
     if not os.path.exists(results_path):
         os.makedirs(results_path)
 
-    
     # dump all results:
     with open(results_path +'\\weights_and_corpus.pkl', 'wb') as f:
-        pickle.dump([w, timeL, V, T_with_start, data, data_tag, test, test_tag], f)
-
+        pickle.dump([w_opt, V, T_with_start, data, data_tag, test, test_tag], f)
 
     # case input file is not given, use loaded test
     if input_path == None:
@@ -524,7 +632,7 @@ if __name__ == '__main__':
         corpus = test
     
     # run Viterbi algorithm
-    (all_tagged_sentence, all_sentence_tags, _) = viterby_predictor(corpus, w)
+    (all_tagged_sentence, all_sentence_tags, _) = viterby_predictor(corpus, w_opt)
 
     line_accuracy = []
     tot_accuracy = 0
