@@ -28,6 +28,7 @@ def data_preprocessing(data_path, test_path):
              test: list of test sentences, each sentece as a list of words
              test_tag: list of test sentences tags, each sentece as a list of tags
     """
+    print('Data preprocessing...')
     data = []  # holds the data
     data_tag = []  # holds the taging 
     f = open(data_path, "r")
@@ -70,6 +71,7 @@ def data_preprocessing(data_path, test_path):
         test_tag.append(tagsplit)
         test.append(linesplit)
 
+    print('Done preprocessing!')
     return (V, T, data, data_tag, test, test_tag)
 
 
@@ -174,7 +176,6 @@ def train_online(max_epoch, data, data_tag, lambda_rate, lr):
 
             normalization_counts = lambda_rate * w
 
-
             empirical_counts = np.zeros(feature_size, dtype=np.float64)
             for i, word in enumerate(sentence[:-1]):
                 if i == 0 or i == 1:
@@ -256,50 +257,49 @@ def softmax(numerator, denominator):
 def loss_grads(w, data, data_tag, lambda_rate, feature_size, T, T_size):
 
     w_grads = np.zeros(feature_size, dtype=np.float64)
-    print('max w: {}, {}'.format(np.max(w), np.sum(w > 20)))
     for h, sentence in enumerate(data):
         tag_sentence = data_tag[h]
-    
+
+        # calculate weights normalization term
         normalization_counts = lambda_rate * w
+
+        # calculate empirical counts term
         empirical_counts = np.zeros(feature_size, dtype=np.float64)
         for i, word in enumerate(sentence[:-1]):
             if i == 0 or i == 1:
                 continue          
             empirical_counts[get_base_features(word, tag_sentence[i-2:i+1])] += 1
-    
-        expected_counts = np.zeros(feature_size, dtype=np.float64)
-    
-        # calculate p_array which contains p(y|x,w)
-        p_array = np.zeros((len(sentence[2:-1]), T_size - 2), dtype=np.float64)
-        for i, word in enumerate(sentence[:-1]):
-            if i == 0 or i == 1:
-                continue
-            feats = get_word_all_possible_tags_features(word, [tag_sentence[i - 2], tag_sentence[i - 1]], 'base')
-            for j, tag in enumerate(T):
-                tag_feat = feats[j, :]
-                # denominator = np.sum(w[feats], axis=1)
-                # numerator = np.sum(w[tag_feat])
-                p_array[i - 2, j] = softmax(np.sum(w[tag_feat]), np.sum(w[feats], axis=1))
-                # need to insert something that checks for inf or nan like:  np.isinf(a).any()
 
-        # calc f_array which contains f(x,y)
+        # calculate expected counts term
+        expected_counts = np.zeros(feature_size, dtype=np.float64)
+
+        # calc f_array which contains features indexes that are equal to 1:
+        # for all possible tag[i] and for all words in the sentence
         f_array = np.zeros((len(sentence[2:-1]), T_size - 2, 3), dtype=np.int64)
+
+        # go over all words in sentence
         for i, word in enumerate(sentence[:-1]):
+            # 2 first words are /* /* start symbols
             if i == 0 or i == 1:
                 continue
-            f_array[i - 2, :, :] = get_word_all_possible_tags_features(word, [tag_sentence[i - 2], tag_sentence[i - 1]], 'base')
-    
-        # calc empirical counts
-        for i, word in enumerate(sentence[:-1]):
-            if i == 0 or i == 1:
-                continue
+            # get all features indexes that are equal to 1, for all possible tag[i]
+            feats = get_word_all_possible_tags_features(word, [tag_sentence[i - 2], tag_sentence[i - 1]], 'base')
+            f_array[i - 2, :, :] = feats
+
             for j, tag in enumerate(T):
-                expected_counts[f_array[i - 2, j, :]] += p_array[i - 2, j]
-    
+                # take features indexes for tag[i] = j
+                tag_feat = feats[j, :]
+
+                # calculate p(y|x,w) for word x and for tag[i] = j
+                    # softmax denominator = np.sum(w[feats], axis=1)
+                    # softmax numerator = np.sum(w[tag_feat])
+                p = softmax(np.sum(w[tag_feat]), np.sum(w[feats], axis=1))
+
+                # update expected counts
+                expected_counts[f_array[i - 2, j, :]] += p
+                # TODO: need to insert something that checks for inf or nan like:  np.isinf(a).any()
+
         w_grads += empirical_counts - expected_counts - normalization_counts
-    print('max_grads w: {}, {}'.format(np.max(w_grads), np.sum(w_grads > 0.1)))
-    # np.clip(w_grads, None, 400, out=w_grads)
-    # print('max_cliped_grads w: {}, {}'.format(np.max(w_grads), np.sum(w_grads > 20)))
     return (-1)*w_grads
 
 
@@ -431,7 +431,7 @@ if __name__ == '__main__':
 
     # run on very small corpus to test the algorithm
     if toy:
-        data_path = project_dir + '\\data\\carmel_test3.txt'
+        data_path = project_dir + '\\data\\train.wtag'
         test_path = project_dir + '\\data\\carmel_test3.txt'
 
 
@@ -462,7 +462,6 @@ if __name__ == '__main__':
     else:
         print('Done in time: {}'.format(time.time() - t0))
         w_opt = optimal_params[0]
-        print(w_opt)
 
     results_path = project_dir + '\\train_results\\' + resultsFn
     if not os.path.exists(results_path):
