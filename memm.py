@@ -473,27 +473,42 @@ def viterby_predictor(corpus, w, prob_mat = None):
 
 
 def create_confusion_matrix():
-    #init confusion matrix - [a,b] if we tagged word as "a" but the real tag is "b"
-#    confusion_matrix = np.zeros((len(T),len(T)),dtype=np.int)
-#    max_failure_matrix = np.zeros((10,len(T)),dtype=np.int)
-#
-#    res = 0
-#    failure_dict = {}
-#    for tag in T:
-#        failure_dict[tag] = 0
-#    for sen_idx, sen_tags in enumerate(all_sentence_tags): 
-#        for pred_tag,real_tag in zip(sen_tags, test_tag[sen_idx]):
-#            if pred_tag == real_tag:
-#                res += 1
-#            else:
-#                failure_dict[pred_tag] += 1
-#            confusion_matrix[T.index(pred_tag),T.index(real_tag)] += 1 
-#    common_failure_tags = dict(Counter(failure_dict).most_common(10))
-#    max_failure_matrix = confusion_matrix
-#    csv_file_name = results_path +'\\confusion_matrix.csv'
-#    df = pd.DataFrame(confusion_matrix, index = T, columns = T)    
-#    df.to_csv(csv_file_name, index=True, header=True, sep=',')
+#    init confusion matrix - [a,b] if we tagged word as "a" but the real tag is "b"
+    T_dict = {}
+    for i,tag in enumerate(T):
+        T_dict[tag] = i
+        
+    confusion_matrix = np.zeros((len(T),len(T)),dtype=np.int)
+    max_failure_matrix = np.zeros((10,len(T)),dtype=np.int)
 
+    res = 0
+    failure_dict = {}
+    for tag in T:
+        failure_dict[tag] = 0
+    for sen_idx, sen_tags in enumerate(all_sentence_tags): 
+        for pred_tag,real_tag in zip(sen_tags, test_tag[sen_idx]):
+            if pred_tag == real_tag:
+                res += 1
+            else:
+                failure_dict[pred_tag] += 1
+            confusion_matrix[T_dict[pred_tag],T_dict[real_tag]] += 1 
+    common_failure_tags = dict(Counter(failure_dict).most_common(10))
+    
+    i = 0
+    for key in common_failure_tags.keys():
+        common_failure_tags[key] = i
+        i += 1
+        
+    for tag in common_failure_tags.keys():
+        max_failure_matrix[common_failure_tags[tag]] = confusion_matrix[T_dict[tag]]
+    
+    confusion_matrix_fn = results_path +'\\confusion_matrix.csv'
+    df = pd.DataFrame(confusion_matrix, index = T, columns = T)    
+    df.to_csv(confusion_matrix_fn, index=True, header=True, sep=',')
+
+    max_failure_matrix_fn = results_path +'\\max_failure_matrix.csv'
+    df = pd.DataFrame(max_failure_matrix, index = list(common_failure_tags.keys()), columns = T)    
+    df.to_csv(max_failure_matrix_fn, index=True, header=True, sep=',')
 
 
 if __name__ == '__main__':
