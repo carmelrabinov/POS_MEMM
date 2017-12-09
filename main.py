@@ -9,14 +9,14 @@ from pos_memm.pos_memm import POS_MEMM, load_model, data_preprocessing
 import os
 import argparse
 import sys
-
+import numpy as np
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('results_dir', help='output results')
-    parser.add_argument('-regularization', type=float, default=0.02)
+    parser.add_argument('-regularization', type=np.float64, default=0.02)
     parser.add_argument('-toy', action='store_true')
-    parser.add_argument('-threshold', type=int, default=10)
+    parser.add_argument('-threshold', type=int, default=5)
     parser.add_argument('-verbosity', type=int, default=0)
     parser.add_argument('-mode', type=str, default='complex')
     parser.parse_args(namespace=sys.modules['__main__'])
@@ -28,11 +28,11 @@ if __name__ == '__main__':
     data_path = project_dir + '\\data\\train.wtag'
 
     if toy:
-        results_dir = 'on_all_train_complex'
+        results_dir = 'tmp_test'
         project_dir = 'D:\\TECHNION\\NLP\\part_of_speech_taging_MEMM'
         results_path = project_dir + '\\results\\' + results_dir
         test_path = project_dir + '\\data\\carmel_test3.txt'
-        data_path = project_dir + '\\data\\carmel_test3.txt'
+        # data_path = project_dir + '\\data\\carmel_test3.txt'
         regularization = 0.05
         mode = 'complex'
         verbosity = 1
@@ -42,6 +42,7 @@ if __name__ == '__main__':
     res = model.test(test_path, verbosity=verbosity, save_results_to_file=results_path)
     model.save_model(results_path)
 
+    # save logs
     with open(results_path + '\\logs.txt', 'w') as f:
         f.writelines('Accuracy: {}\n'.format(res[0]))
         f.writelines('Data path: {}\n'.format(data_path))

@@ -18,7 +18,8 @@ from itertools import chain
 from scipy.misc import logsumexp
 from scipy.optimize import fmin_l_bfgs_b
 from collections import Counter
-
+from multiprocessing.pool import ThreadPool
+from multiprocessing import Pool
 
 def softmax(numerator, denominator):
     denominator_max = np.max(denominator)
@@ -78,6 +79,7 @@ def data_preprocessing(data_path, mode):
 
 class POS_MEMM:
     def __init__(self):
+        self.weights = 0
         self.feature_size = 0
         self.data = []
         self.data_tag = []
@@ -98,6 +100,26 @@ class POS_MEMM:
         self.prefix_2 = {}
         self.prefix_3 = {}
         self.prefix_4 = {}
+        self.features_dict = {}
+        self.features_dict_all_tags = {}
+        self.features_count_dict = {}
+
+    def build_features_dict(self):
+        for h, sen in enumerate(self.data):
+            tag_sen = self.data_tag[h]
+
+            for i, word in enumerate(sen[:-1]):
+                if i == 0 or i == 1:
+                    continue
+                if (word, tag_sen[i - 2], tag_sen[i - 1], tag_sen[i]) in self.features_count_dict:
+                    self.features_count_dict[(word, tag_sen[i - 2], tag_sen[i - 1], tag_sen[i])] += 1
+                else:
+                    self.features_dict[(word, tag_sen[i - 2], tag_sen[i - 1], tag_sen[i])] = \
+                        self.get_features(word, [tag_sen[i - 2], tag_sen[i - 1], tag_sen[i]])
+                    self.features_count_dict[(word, tag_sen[i - 2], tag_sen[i - 1], tag_sen[i])] = 1
+                for tag in self.T:
+                        self.features_dict_all_tags[(word, tag_sen[i - 2], tag_sen[i - 1], tag)] = \
+                                            self.get_features(word, [tag_sen[i - 2], tag_sen[i - 1], tag])
 
     def train(self, data_path, regularization=0.1, mode='base', spelling_threshold=10, verbosity=0):
         self.regularization = regularization
@@ -122,6 +144,10 @@ class POS_MEMM:
 
         self.feature_size = self.get_feature_size()
         self.weights = np.zeros(self.feature_size, dtype=np.float64)
+
+        print('Building features...')
+        self.build_features_dict()
+        print('Done!')
 
         print('Start training...')
         t0 = time.time()
@@ -190,76 +216,74 @@ class POS_MEMM:
             denominator[i] = np.sum(w[self.get_features(xi, [t2, t1, tag])])
         return softmax(denominator, denominator)
 
+    def calc_all_possible_tags_probabilities_train(self, xi, t1, t2, w):
+        """
+        calculate probability p(ti|xi,w)
+        :param xi: the word[i]
+        :param t1: POS tag for word[i-1]
+        :param t2: POS tag for word[i-2]
+        :param w: weights vector
+        :return: a list for all possible ti probabilities p(ti|xi,w) as float64
+        """
+        denominator = np.zeros(self.T_size - 2)
+        for i, tag in enumerate(self.T):
+            denominator[i] = np.sum(w[self.features_dict_all_tags[(xi, t2, t1, tag)]])
+
+        return softmax(denominator, denominator)
+
     def loss_grads(self, w):
+        t0 = time.time()
+        empirical_counts = np.zeros(self.feature_size, dtype=np.float64)
+        expected_counts = np.zeros(self.feature_size, dtype=np.float64)
 
-        # TODO: remove prints
-        # t0 = time.time()
-        w_grads = np.zeros(self.feature_size, dtype=np.float64)
-        for h, sentence in enumerate(self.data):
-            tag_sentence = self.data_tag[h]
+        # calculate normalization loss term
+        normalization_counts = self.regularization * w * len(self.data)
 
-            # calculate weights normalization term
-            normalization_counts = self.regularization * w
+        for key, features_inx in self.features_dict.items():
+            (word, t2, t1, t) = key
+            count = self.features_count_dict[key]
 
-            # calculate empirical counts term
-            empirical_counts = np.zeros(self.feature_size, dtype=np.float64)
-            for i, word in enumerate(sentence[:-1]):
-                if i == 0 or i == 1:
-                    continue
-                empirical_counts[self.get_features(word, tag_sentence[i - 2:i + 1])] += 1
+            # calculate empirical loss term
+            empirical_counts[features_inx] += count
 
-                # calculate expected counts term
-            expected_counts = np.zeros(self.feature_size, dtype=np.float64)
+            # calculate p(y|x,w) for word x and for all possible tag[i]
+            p = self.calc_all_possible_tags_probabilities_train(word, t1, t2, w)
 
-            # go over all words in sentence
-            for i, word in enumerate(sentence[:-1]):
-                # 2 first words are /* /* start symbols
-                if i == 0 or i == 1:
-                    continue
+            # calculate expected_loss term
+            for j, tag in enumerate(self.T):
+                tag_feat = self.features_dict_all_tags[(word, t2, t1, tag)]
+                expected_counts[tag_feat] += p[j] * count
 
-                # calculate p(y|x,w) for word x and for all possible tag[i]
-                p = self.calc_all_possible_tags_probabilities(word, tag_sentence[i - 1], tag_sentence[i - 2], w)
+        w_grads = empirical_counts - expected_counts - normalization_counts
 
-                for j, tag in enumerate(self.T):
-                    # take features indexes for tag[i] = j
-                    tag_feat = self.get_features(word, [tag_sentence[i - 2], tag_sentence[i - 1], tag])
-
-                    # add p[j] to all features indexes that are equal to 1 (f_array[i - 2, j, :] is a list of indexes)
-                    expected_counts[tag_feat] += p[j]
-                    # TODO: need to insert something that checks for inf or nan like:  np.isinf(a).any()
-
-            # update grads for the sentence
-            w_grads += empirical_counts - expected_counts - normalization_counts
-        # TODO: remove prints
-        # print('Done calculate grads in {}, max abs grad is {}, max abs w is {}'.format((time.time()-t0)/60, np.max(np.abs(w_grads)), np.max(np.abs(w))))
+        if self.verbosity:
+            print('Done calculate grads in {}, max abs grad is {}, max abs w is {}'.format((time.time()-t0)/60, np.max(np.abs(w_grads)), np.max(np.abs(w))))
         return (-1) * w_grads
 
     def loss(self, w):
-        loss_ = 0
-        for h, sentence in enumerate(self.data):
-            tag_sentence = self.data_tag[h]
-            empirical_loss = 0
-            expected_loss = 0
+        t0 = time.time()
+        empirical_loss = 0
+        expected_loss = 0
 
-            # calculate normalization loss term
-            normalization_loss = np.sum(np.square(w)) * self.regularization / 2
+        # calculate normalization loss term
+        normalization_loss = (np.sum(np.square(w)) * self.regularization / 2) * len(self.data)
 
-            for i, word in enumerate(sentence[:-1]):
-                if i == 0 or i == 1:
-                    continue
-                # calculate empirical loss term
-                features_inx = self.get_features(word, tag_sentence[i - 2:i + 1])
-                empirical_loss += np.sum(w[features_inx])
+        for key, features_inx in self.features_dict.items():
+            (word, t2, t1, t) = key
+            count = self.features_count_dict[key]
 
-                # calculate expected_loss term
-                exp_term = np.zeros(self.T_size - 2)
-                for j, tag in enumerate(self.T):
-                    exp_term[j] = np.sum(w[self.get_features(word, [tag_sentence[i - 2], tag_sentence[i - 1], tag])])
-                expected_loss += logsumexp(exp_term)
+            # calculate empirical loss term
+            empirical_loss += np.sum(w[features_inx]) * count
 
-            loss_ += empirical_loss - expected_loss - normalization_loss
+            # calculate expected_loss term
+            exp_term = np.zeros(self.T_size - 2)
+            for j, tag in enumerate(self.T):
+                exp_term[j] = np.sum(w[self.features_dict_all_tags[(word, t2, t1, tag)]])
+            expected_loss += logsumexp(exp_term) * count
+
+        loss_ = empirical_loss - expected_loss - normalization_loss
         if self.verbosity:
-            print('Loss is: {}'.format((-1) * loss_))
+            print('Done calculate Loss in {} minutes, Loss is: {}'.format((time.time() - t0)/60, (-1) * loss_))
         return (-1) * loss_
 
     def get_feature_size(self):
