@@ -31,14 +31,15 @@ if __name__ == '__main__':
         results_dir = 'tmp_test'
         project_dir = 'D:\\TECHNION\\NLP\\part_of_speech_taging_MEMM'
         results_path = project_dir + '\\results\\' + results_dir
-        test_path = project_dir + '\\data\\carmel_test3.txt'
-        # data_path = project_dir + '\\data\\carmel_test3.txt'
+        test_path = project_dir + '\\data\\carmel_test2.txt'
+        data_path = project_dir + '\\data\\carmel_test3.txt'
         regularization = 0.05
         mode = 'complex'
         verbosity = 1
 
     model = POS_MEMM()
     model.train(data_path, verbosity=verbosity, mode=mode, regularization=regularization)
+    model.save_model(results_path)
     res = model.test(test_path, verbosity=verbosity, save_results_to_file=results_path)
     model.save_model(results_path)
 

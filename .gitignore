@@ -9,3 +9,4 @@ NLP
 NLP/*
 data/test_data_carmel.txt
 bfgs.py
+results

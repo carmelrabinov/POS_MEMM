@@ -29,7 +29,7 @@ def softmax(numerator, denominator):
 
 
 def load_model(Fn):
-    with open(Fn + '.pkl', 'rb') as f:
+    with open(Fn + '\\model.pkl', 'rb') as f:
         model = pickle.load(f)
     return model
 
@@ -309,6 +309,128 @@ class POS_MEMM:
             size_dict['G2'] = self.T_size  # is current word starts with Upper case + the current tag
 
         return sum(size_dict.values())
+
+    def predict_parallel(self, corpus, verbosity=0):
+
+        print('Start predicting...')
+        t0 = time.time()
+        self.verbosity = verbosity
+
+        self.build_predict_prob_matrix(corpus)
+
+        pool = ThreadPool()     #Pool(processes=5, maxtasksperchild=3)
+        res = pool.map(self.predict_sentence, corpus)
+        pool.close()
+        pool.join()
+
+        all_sentence_tags = [x[1] for x in res]
+        all_tagged_sentence = [x[0] for x in res]
+
+        del self.prob_mat, self.V_COMP_dict
+        self.verbosity = 0
+        print('predict_parallel in time: {} min'.format((time.time() - t0)/60))
+        return all_tagged_sentence, all_sentence_tags
+
+    def build_word_prob_matrix(self, word):
+
+        prob_mat = np.zeros((self.T_size - 2, self.T_size - 2, self.T_size - 2))
+
+        for u in self.T:  # for each t-1 possible tag
+            for t in self.T:  # for each t-2 possible tag:
+                prob_mat[:, self.T_dict[u],
+                self.T_dict[t]] = self.calc_all_possible_tags_probabilities(word, u, t, self.weights)
+
+        return word, prob_mat
+
+    def build_predict_prob_matrix(self, corpus):
+        print('Building prob matrix...')
+        t0 = time.time()
+        # init a list of singular words in the target corpus:
+        V_COMP = sorted(list(set(chain(*corpus))))
+        V_COMP_size = len(V_COMP)
+        self.V_COMP_dict = {}
+        for i, v in enumerate(V_COMP):
+            self.V_COMP_dict[v] = i
+
+        # init probability matrix:
+        # holds all p(word,t(i),t(i-1),t(i-2))
+        self.prob_mat = np.zeros((V_COMP_size, self.T_size - 2, self.T_size - 2, self.T_size - 2))
+
+        pool = Pool()
+        res = pool.map(self.build_word_prob_matrix, V_COMP)
+        pool.close()
+        pool.join()
+
+        for touple in res:
+            self.prob_mat[self.V_COMP_dict[touple[0]], :, :, :] = touple[1]
+        print('Build prob matrix in time: {} min'.format((time.time() - t0)/60))
+
+    def predict_sentence(self, sentence):
+        # init empty array of strings to save the tag for each word in the sentance
+        sentence_len = len(sentence)
+        sentence_tags = ['' for x in range(sentence_len)]
+
+        # init dynamic matrix with size:
+        # pi_matrix[k,t(i-1),t(i)] is the value of word number k, preciding tag u and t accordingly
+        pi_matrix = np.zeros((sentence_len, self.T_size - 2, self.T_size - 2))
+
+        # init back pointers matrix:
+        # bp[k,t,u] is the tag index of word number k-2, following tag t and u accordingly
+        bp = np.zeros((sentence_len, self.T_size - 2, self.T_size - 2), dtype=np.int)
+
+        for k in range(0, sentence_len):  # for each word in the sentence
+
+            for current_tag in self.T:  # for each t possible tag
+
+                if k == 0:
+                    # at the first two words there is no meaning to the k-1 tag index. pi[k-1]
+                    pi_matrix[k, 0, :] = 1 * self.calc_all_possible_tags_probabilities(sentence[k], '/*', '/*',
+                                                                                       self.weights)
+                    break
+                elif k == 1:
+                    for u in self.T:  # for each t-1 possible tag
+                        pi_matrix[k, self.T_dict[u], :] = pi_matrix[k - 1, 0, self.T_dict[
+                            u]] * self.calc_all_possible_tags_probabilities(sentence[k], u, '/*', self.weights)
+                    break
+                else:
+                    for u in self.T:  # for each t-1 possible tag
+
+                        # calculate pi value, and check if it exeeds the current max:
+                        pi_values = pi_matrix[k - 1, :, self.T_dict[u]] * self.prob_mat[self.V_COMP_dict[sentence[k]],
+                                                                          self.T_dict[current_tag], self.T_dict[u],
+                                                                          :]
+                        ind = np.argmax(pi_values)
+                        if pi_values[ind] > pi_matrix[k, self.T_dict[u], self.T_dict[current_tag]]:
+                            # update max:
+                            pi_matrix[k, self.T_dict[u], self.T_dict[current_tag]] = pi_values[ind]
+
+                            # update back pointers:
+                            bp[k, self.T_dict[u], self.T_dict[current_tag]] = ind
+
+        u_ind, curr_ind = np.unravel_index(pi_matrix[sentence_len - 1, :, :].argmax(),
+                                           pi_matrix[sentence_len - 1, :, :].shape)
+        sentence_tags[-2:] = [self.T[u_ind], self.T[curr_ind]]
+
+        # extracting MEMM tags path from back pointers matrix:
+        for i in range(sentence_len - 3, -1, -1):
+            # calculate the idx of tag i in T db:
+            # reminder - bp[k,t,u] is the tag of word k-2, following tag t and u accordingly
+            k_tag_idx = bp[i + 2, self.T_dict[sentence_tags[i + 1]], self.T_dict[sentence_tags[i + 2]]]
+
+            # update the i-th tag to the list of tags
+            sentence_tags[i] = self.T[k_tag_idx]
+
+        # build tagged sentence:
+        tagged_sentence = ''
+        for i in range(sentence_len):
+            tagged_sentence += (sentence[i] + '_')
+            tagged_sentence += sentence_tags[i] + (' ')
+
+        if self.verbosity:
+            print(tagged_sentence)
+
+        return tagged_sentence, sentence_tags
+
 
     def predict(self, corpus, verbosity=0):
         """
@@ -591,15 +713,19 @@ class POS_MEMM:
         self.prefix_3 = prefix_3
         self.prefix_4 = prefix_4
 
-    def test(self, test_data_path, end=-1, start=0, verbosity=0, save_results_to_file=None):
+    def test(self, test_data_path, end=0, start=0, verbosity=0, save_results_to_file=None):
         self.verbosity = verbosity
         (_, _, test, test_tag) = data_preprocessing(test_data_path, 'test')
 
-        corpus = test[start:end]
-        corpus_tag = test_tag[start:end]
+        if end:
+            corpus = test[start:end]
+            corpus_tag = test_tag[start:end]
+        else:
+            corpus = test[start:]
+            corpus_tag = test_tag[start:]
 
         # run Viterbi algorithm
-        (all_tagged_sentence, all_sentence_tags) = self.predict(corpus, verbosity=verbosity)
+        (all_tagged_sentence, all_sentence_tags) = self.predict_parallel(corpus, verbosity=verbosity)
 
         tot_length = 0
         tot_correct = 0
@@ -632,6 +758,11 @@ class POS_MEMM:
         return tot_accuracy, all_sentence_tags, all_tagged_sentence, test_tag
 
     def save_model(self, resultsfn):
+        print('Saving model to {}'.format(resultsfn))
+        # creating directory
+        if not os.path.exists(resultsfn):
+            os.makedirs(resultsfn)
+
         # dump all results:
         with open(resultsfn + '\\model.pkl', 'wb') as f:
             pickle.dump(self, f)
