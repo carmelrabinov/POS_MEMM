@@ -273,7 +273,6 @@ def get_features(word, tags, mode):
             G2 = T_with_start_dict[tags[2]]
             features.append(G2 + G1_len)
         G2_len = G1_len + T_size
-            
 
     return features
 
@@ -318,7 +317,8 @@ def loss(w, data, data_tag, lambda_rate, feature_size, T, T_size):
             expected_loss += logsumexp(exp_term)
 
         loss_ += empirical_loss - expected_loss - normalization_loss
-    print('Loss is: {}'.format((-1)*loss_))
+    # TODO: remove prints
+    # print('Loss is: {}'.format((-1)*loss_))
     return (-1)*loss_
 
 
@@ -331,7 +331,8 @@ def softmax(numerator, denominator):
 
 def loss_grads(w, data, data_tag, lambda_rate, feature_size, T, T_size):
 
-    t0 = time.time()
+    # TODO: remove prints
+    # t0 = time.time()
     w_grads = np.zeros(feature_size, dtype=np.float64)
     for h, sentence in enumerate(data):
         tag_sentence = data_tag[h]
@@ -368,7 +369,8 @@ def loss_grads(w, data, data_tag, lambda_rate, feature_size, T, T_size):
 
         # update grads for the sentence
         w_grads += empirical_counts - expected_counts - normalization_counts
-    print('Done calculate grads in {}, max abs grad is {}, max abs w is {}'.format((time.time()-t0)/60, np.max(np.abs(w_grads)), np.max(np.abs(w))))
+    # TODO: remove prints
+    # print('Done calculate grads in {}, max abs grad is {}, max abs w is {}'.format((time.time()-t0)/60, np.max(np.abs(w_grads)), np.max(np.abs(w))))
     return (-1)*w_grads
 
 
@@ -514,7 +516,7 @@ def create_confusion_matrix():
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('resultsFn', help='output results')
-    parser.add_argument('-lambda_rate', type=np.float64, default=0.5)
+    parser.add_argument('-lambda_rate', type=np.float64, default=0.1)
     parser.add_argument('-toy', action='store_true')
     parser.add_argument('-input_path', type=str, default=None)
     parser.add_argument('-end', type=int, default=0)
@@ -539,8 +541,8 @@ if __name__ == '__main__':
         data_path = project_dir + '\\data\\carmel_test3.txt'
         test_path = project_dir + '\\data\\carmel_test3.txt'
         resultsFn = 'test1'
-        mode = 'complex'
-        end = 10
+        mode = 'base'
+        end = 20
         # data_path = project_dir + '\\data\\debug.wtag'
         # test_path = project_dir + '\\data\\debug.wtag'
     if baba:
@@ -577,10 +579,9 @@ if __name__ == '__main__':
     feature_size = get_feature_vector_size(mode)
 
     t0 = time.time()
-    lambda_rate = 0.1
-
     optimal_params = train_bfgs(data, data_tag, lambda_rate, T, T_size)
-    print('Finished training with code: {}\nIterations number: {}\nCalls number: {}'.format(optimal_params[2]['warnflag'],
+    print('Finished training with code: {}\nTraining time: {}\nIterations number: {}\nCalls number: {}'.format(optimal_params[2]['warnflag'],
+                                                                                   (time.time() -t0)/60,
                                                                                    optimal_params[2]['nit'],
                                                                                    optimal_params[2]['funcalls']))
     if optimal_params[2]['warnflag']:
