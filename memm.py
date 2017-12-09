@@ -650,5 +650,3 @@ if __name__ == '__main__':
     with open(results_path +'\\predictions.txt', 'w') as f2:
         for s in all_tagged_sentence:
             f2.writelines(s+'\n')
-
-
