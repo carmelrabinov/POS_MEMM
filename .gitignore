@@ -8,4 +8,5 @@ data/carmel_test3.txt
 NLP
 NLP/*
 data/test_data_carmel.txt
+data/debug.wtag
 bfgs.py
