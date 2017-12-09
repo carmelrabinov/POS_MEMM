@@ -5,9 +5,12 @@ Created on Thu Dec  7 01:02:59 2017
 @author: carmelr
 """
 import time
+import os
 
-try: import cPickle as pickle
-except: import pickle
+try:
+    import cPickle as pickle
+except:
+    import pickle
 
 import pandas as pd
 import numpy as np
@@ -25,13 +28,13 @@ def softmax(numerator, denominator):
 
 
 def load_model(Fn):
-    with open(Fn+'.pkl', 'rb') as f:
+    with open(Fn + '.pkl', 'rb') as f:
         model = pickle.load(f)
     return model
 
 
 def data_preprocessing(data_path, mode):
-# mode can be 'train', 'test', or 'comp'
+    # mode can be 'train', 'test', or 'comp'
     data = []  # holds the data
     data_tag = []  # holds the taging
     f = open(data_path, "r")
@@ -89,6 +92,12 @@ class POS_MEMM:
         self.T_dict = {}
         self.V_dict = {}
         self.T_with_start_dict = {}
+        self.suffix_2 = {}
+        self.suffix_3 = {}
+        self.suffix_4 = {}
+        self.prefix_2 = {}
+        self.prefix_3 = {}
+        self.prefix_4 = {}
 
     def train(self, data_path, regularization=0.1, mode='base', spelling_threshold=10, verbosity=0):
         self.regularization = regularization
@@ -117,8 +126,8 @@ class POS_MEMM:
         print('Start training...')
         t0 = time.time()
         optimal_params = fmin_l_bfgs_b(func=self.loss, x0=self.weights, fprime=self.loss_grads)
-        print('Finished training with code: ',optimal_params[2]['warnflag'])
-        print('Training time: ',(time.time() - t0)/60)
+        print('Finished training with code: ', optimal_params[2]['warnflag'])
+        print('Training time: {} minutes'.format((time.time() - t0) / 60))
         print('Iterations number: ', optimal_params[2]['nit'])
         print('Calls number: ', optimal_params[2]['funcalls'])
 
@@ -129,22 +138,20 @@ class POS_MEMM:
 
         del self.data, self.data_tag
 
-    def create_confusion_matrix(self, all_sentence_tags, results_path):
+    def create_confusion_matrix(self, all_sentence_tags, test_tag, results_path):
         # init confusion matrix - [a,b] if we tagged word as "a" but the real tag is "b"
-        confusion_matrix = np.zeros((self.T_size -2, self.T_size -2),dtype=np.int)
-        max_failure_matrix = np.zeros((10, self.T_size -2),dtype=np.int)
+        confusion_matrix = np.zeros((self.T_size - 2, self.T_size - 2), dtype=np.int)
+        max_failure_matrix = np.zeros((10, self.T_size - 2), dtype=np.int)
 
-        res = 0
         failure_dict = {}
         for tag in self.T:
             failure_dict[tag] = 0
         for sen_idx, sen_tags in enumerate(all_sentence_tags):
-            for pred_tag,real_tag in zip(sen_tags, self.test_tag[sen_idx]):
-                if pred_tag == real_tag:
-                    res += 1
-                else:
-                    failure_dict[pred_tag] += 1
-                confusion_matrix[self.T_dict[pred_tag],self.T_dict[real_tag]] += 1
+            for pred_tag, real_tag in zip(sen_tags, test_tag[sen_idx]):
+                if pred_tag != real_tag:
+                    failure_dict[real_tag] += 1
+                confusion_matrix[self.T_dict[real_tag], self.T_dict[pred_tag]] += 1
+
         common_failure_tags = dict(Counter(failure_dict).most_common(10))
 
         i = 0
@@ -152,15 +159,21 @@ class POS_MEMM:
             common_failure_tags[key] = i
             i += 1
 
-        for tag in common_failure_tags.keys():
-            max_failure_matrix[common_failure_tags[tag]] = confusion_matrix[self.T_dict[tag]]
+        if not os.path.exists(results_path):
+            os.makedirs(results_path)
+        print('Saving confusion matrix to {}'.format(results_path))
 
-        confusion_matrix_fn = results_path +'\\confusion_matrix.csv'
-        df = pd.DataFrame(confusion_matrix, index = self.T, columns = self.T)
+        confusion_matrix_fn = results_path + '\\confusion_matrix.csv'
+        df = pd.DataFrame(confusion_matrix, index=self.T, columns=self.T)
         df.to_csv(confusion_matrix_fn, index=True, header=True, sep=',')
 
-        max_failure_matrix_fn = results_path +'\\max_failure_matrix.csv'
-        df = pd.DataFrame(max_failure_matrix, index = list(common_failure_tags.keys()), columns = self.T)
+        mat = confusion_matrix
+        np.fill_diagonal(mat, 0)
+        for tag in common_failure_tags.keys():
+            max_failure_matrix[common_failure_tags[tag]] = mat[self.T_dict[tag]]
+
+        max_failure_matrix_fn = results_path + '\\max_failure_matrix.csv'
+        df = pd.DataFrame(max_failure_matrix, index=list(common_failure_tags.keys()), columns=self.T)
         df.to_csv(max_failure_matrix_fn, index=True, header=True, sep=',')
 
     def calc_all_possible_tags_probabilities(self, xi, t1, t2, w):
@@ -175,7 +188,7 @@ class POS_MEMM:
         denominator = np.zeros(self.T_size - 2)
         for i, tag in enumerate(self.T):
             denominator[i] = np.sum(w[self.get_features(xi, [t2, t1, tag])])
-        return softmax(denominator,denominator)
+        return softmax(denominator, denominator)
 
     def loss_grads(self, w):
 
@@ -185,17 +198,17 @@ class POS_MEMM:
         for h, sentence in enumerate(self.data):
             tag_sentence = self.data_tag[h]
 
-        # calculate weights normalization term
+            # calculate weights normalization term
             normalization_counts = self.regularization * w
 
-        # calculate empirical counts term
+            # calculate empirical counts term
             empirical_counts = np.zeros(self.feature_size, dtype=np.float64)
             for i, word in enumerate(sentence[:-1]):
                 if i == 0 or i == 1:
                     continue
-                empirical_counts[self.get_features(word, tag_sentence[i-2:i+1])] += 1
+                empirical_counts[self.get_features(word, tag_sentence[i - 2:i + 1])] += 1
 
-        # calculate expected counts term
+                # calculate expected counts term
             expected_counts = np.zeros(self.feature_size, dtype=np.float64)
 
             # go over all words in sentence
@@ -213,13 +226,13 @@ class POS_MEMM:
 
                     # add p[j] to all features indexes that are equal to 1 (f_array[i - 2, j, :] is a list of indexes)
                     expected_counts[tag_feat] += p[j]
-                # TODO: need to insert something that checks for inf or nan like:  np.isinf(a).any()
+                    # TODO: need to insert something that checks for inf or nan like:  np.isinf(a).any()
 
             # update grads for the sentence
             w_grads += empirical_counts - expected_counts - normalization_counts
         # TODO: remove prints
         # print('Done calculate grads in {}, max abs grad is {}, max abs w is {}'.format((time.time()-t0)/60, np.max(np.abs(w_grads)), np.max(np.abs(w))))
-        return (-1)*w_grads
+        return (-1) * w_grads
 
     def loss(self, w):
         loss_ = 0
@@ -229,45 +242,51 @@ class POS_MEMM:
             expected_loss = 0
 
             # calculate normalization loss term
-            normalization_loss = np.sum(np.square(w)) * self.regularization/2
+            normalization_loss = np.sum(np.square(w)) * self.regularization / 2
 
             for i, word in enumerate(sentence[:-1]):
                 if i == 0 or i == 1:
                     continue
                 # calculate empirical loss term
-                features_inx = self.get_features(word, tag_sentence[i-2:i+1])
+                features_inx = self.get_features(word, tag_sentence[i - 2:i + 1])
                 empirical_loss += np.sum(w[features_inx])
 
                 # calculate expected_loss term
                 exp_term = np.zeros(self.T_size - 2)
                 for j, tag in enumerate(self.T):
-                    exp_term[j] = np.sum(w[self.get_features(word, [tag_sentence[i-2], tag_sentence[i-1], tag])])
+                    exp_term[j] = np.sum(w[self.get_features(word, [tag_sentence[i - 2], tag_sentence[i - 1], tag])])
                 expected_loss += logsumexp(exp_term)
 
             loss_ += empirical_loss - expected_loss - normalization_loss
         if self.verbosity:
-            print('Loss is: {}'.format((-1)*loss_))
-        return (-1)*loss_
+            print('Loss is: {}'.format((-1) * loss_))
+        return (-1) * loss_
 
     def get_feature_size(self):
         size_dict = {}
-        size_dict['F100'] = self.V_size * self.T_size # represens word ant tag for all possible combinations
-        size_dict['F103'] = self.T_size**3 # trigram of tags
-        size_dict['F104'] = self.T_size**2 # bigram of tags
+        size_dict['F100'] = self.V_size * self.T_size  # represens word ant tag for all possible combinations
+        size_dict['F103'] = self.T_size ** 3  # trigram of tags
+        size_dict['F104'] = self.T_size ** 2  # bigram of tags
         if self.mode == 'complex':
-            size_dict['F101_2'] = self.T_size*len(self.suffix_2) # all posible tags for each word in importnat suffix list
-            size_dict['F101_3'] = self.T_size*len(self.suffix_3) # all posible tags for each word in importnat suffix list
-            size_dict['F101_4'] = self.T_size*len(self.suffix_4) # all posible tags for each word in importnat suffix list
-            size_dict['F102_2'] = self.T_size*len(self.prefix_2) # all posible tags for each word in importnat prefix list
-            size_dict['F102_3'] = self.T_size*len(self.prefix_3) # all posible tags for each word in importnat prefix list
-            size_dict['F102_4'] = self.T_size*len(self.prefix_4) # all posible tags for each word in importnat prefix list
-            size_dict['F105'] = self.T_size # unigram of tag
+            size_dict['F101_2'] = self.T_size * len(
+                self.suffix_2)  # all posible tags for each word in importnat suffix list
+            size_dict['F101_3'] = self.T_size * len(
+                self.suffix_3)  # all posible tags for each word in importnat suffix list
+            size_dict['F101_4'] = self.T_size * len(
+                self.suffix_4)  # all posible tags for each word in importnat suffix list
+            size_dict['F102_2'] = self.T_size * len(
+                self.prefix_2)  # all posible tags for each word in importnat prefix list
+            size_dict['F102_3'] = self.T_size * len(
+                self.prefix_3)  # all posible tags for each word in importnat prefix list
+            size_dict['F102_4'] = self.T_size * len(
+                self.prefix_4)  # all posible tags for each word in importnat prefix list
+            size_dict['F105'] = self.T_size  # unigram of tag
             size_dict['G1'] = self.T_size  # is current word a number + the current tag
             size_dict['G2'] = self.T_size  # is current word starts with Upper case + the current tag
 
         return sum(size_dict.values())
 
-    def predict(self, corpus, verbosity=0, save_results_to_file=None):
+    def predict(self, corpus, verbosity=0):
         """
         calculate the tags for the corpus
         :param corpus: a list of sentences (each sentence as a list of words) 
@@ -282,12 +301,12 @@ class POS_MEMM:
         V_COMP = sorted(list(set(chain(*corpus))))
         V_COMP_size = len(V_COMP)
         V_COMP_dict = {}
-        for i,v in enumerate(V_COMP):
+        for i, v in enumerate(V_COMP):
             V_COMP_dict[v] = i
 
         # init probability matrix:
         # holds all p(word,t(i),t(i-1),t(i-2))
-        prob_mat = np.zeros((V_COMP_size, self.T_size - 2,self.T_size - 2,self.T_size - 2))
+        prob_mat = np.zeros((V_COMP_size, self.T_size - 2, self.T_size - 2, self.T_size - 2))
 
         all_sentence_tags = []
         all_tagged_sentence = []
@@ -297,52 +316,57 @@ class POS_MEMM:
         for sentence in corpus:
             # init empty array of strings to save the tag for each word in the sentance
             sentence_len = len(sentence)
-            sentence_tags = [''  for x in range(sentence_len)]
+            sentence_tags = ['' for x in range(sentence_len)]
 
             # init dynamic matrix with size: 
             # pi_matrix[k,t(i-1),t(i)] is the value of word number k, preciding tag u and t accordingly
-            pi_matrix = np.zeros((sentence_len,self.T_size-2,self.T_size-2))
+            pi_matrix = np.zeros((sentence_len, self.T_size - 2, self.T_size - 2))
 
             # init back pointers matrix:
             # bp[k,t,u] is the tag index of word number k-2, following tag t and u accordingly
-            bp = np.zeros((sentence_len,self.T_size-2,self.T_size-2),dtype=np.int)
+            bp = np.zeros((sentence_len, self.T_size - 2, self.T_size - 2), dtype=np.int)
 
-            for k in range (0,sentence_len): # for each word in the sentence
+            for k in range(0, sentence_len):  # for each word in the sentence
 
                 # if havn't seen the word before - update the probebility matrix for all possible tagsL
-                if k > 1 and not prob_mat[V_COMP_dict[sentence[k]],0,0,0].any():
-                    for u in self.T: # for each t-1 possible tag
-                        for t in self.T: # for each t-2 possible tag:
-                            prob_mat[V_COMP_dict[sentence[k]],:, self.T_dict[u], self.T_dict[t]] = self.calc_all_possible_tags_probabilities(sentence[k], u, t, self.weights)
+                if k > 1 and not prob_mat[V_COMP_dict[sentence[k]], 0, 0, 0].any():
+                    for u in self.T:  # for each t-1 possible tag
+                        for t in self.T:  # for each t-2 possible tag:
+                            prob_mat[V_COMP_dict[sentence[k]], :, self.T_dict[u],
+                            self.T_dict[t]] = self.calc_all_possible_tags_probabilities(sentence[k], u, t, self.weights)
 
-                for current_tag in self.T: # for each t possible tag
+                for current_tag in self.T:  # for each t possible tag
 
                     if k == 0:
                         # at the first two words there is no meaning to the k-1 tag index. pi[k-1]
-                        pi_matrix[k, 0, :] = 1 * self.calc_all_possible_tags_probabilities(sentence[k], '/*', '/*', self.weights)
+                        pi_matrix[k, 0, :] = 1 * self.calc_all_possible_tags_probabilities(sentence[k], '/*', '/*',
+                                                                                           self.weights)
                         break
                     elif k == 1:
-                        for u in self.T: # for each t-1 possible tag
-                            pi_matrix[k, self.T_dict[u], :] = pi_matrix[k - 1, 0, self.T_dict[u]] * self.calc_all_possible_tags_probabilities(sentence[k], u, '/*', self.weights)
+                        for u in self.T:  # for each t-1 possible tag
+                            pi_matrix[k, self.T_dict[u], :] = pi_matrix[k - 1, 0, self.T_dict[
+                                u]] * self.calc_all_possible_tags_probabilities(sentence[k], u, '/*', self.weights)
                         break
                     else:
-                        for u in self.T: # for each t-1 possible tag
+                        for u in self.T:  # for each t-1 possible tag
                             # calculate pi value, and check if it exeeds the current max:
-                            pi_values = pi_matrix[k-1, :, self.T_dict[u]] * prob_mat[V_COMP_dict[sentence[k]], self.T_dict[current_tag], self.T_dict[u], :]
+                            pi_values = pi_matrix[k - 1, :, self.T_dict[u]] * prob_mat[V_COMP_dict[sentence[k]],
+                                                                              self.T_dict[current_tag], self.T_dict[u],
+                                                                              :]
                             ind = np.argmax(pi_values)
                             if pi_values[ind] > pi_matrix[k, self.T_dict[u], self.T_dict[current_tag]]:
-
                                 # update max:
                                 pi_matrix[k, self.T_dict[u], self.T_dict[current_tag]] = pi_values[ind]
 
                                 # update back pointers:
                                 bp[k, self.T_dict[u], self.T_dict[current_tag]] = ind
 
-            u_ind, curr_ind = np.unravel_index(pi_matrix[sentence_len-1,:,:].argmax(), pi_matrix[sentence_len-1,:,:].shape)
+            u_ind, curr_ind = np.unravel_index(pi_matrix[sentence_len - 1, :, :].argmax(),
+                                               pi_matrix[sentence_len - 1, :, :].shape)
             sentence_tags[-2:] = [self.T[u_ind], self.T[curr_ind]]
 
             # extracting MEMM tags path from back pointers matrix:
-            for i in range(sentence_len-3,-1,-1):
+            for i in range(sentence_len - 3, -1, -1):
                 # calculate the idx of tag i in T db:
                 # reminder - bp[k,t,u] is the tag of word k-2, following tag t and u accordingly
                 k_tag_idx = bp[i + 2, self.T_dict[sentence_tags[i + 1]], self.T_dict[sentence_tags[i + 2]]]
@@ -353,15 +377,14 @@ class POS_MEMM:
             # build tagged sentence:
             tagged_sentence = ''
             for i in range(sentence_len):
-                tagged_sentence += (sentence[i] +'_')
+                tagged_sentence += (sentence[i] + '_')
                 tagged_sentence += sentence_tags[i] + (' ')
             all_sentence_tags.append(sentence_tags)
             all_tagged_sentence.append(tagged_sentence)
             if self.verbosity:
                 print(tagged_sentence)
-        print('Done predicting in {} minutes'.format((time.time() - t0)/60))
-        # if save_results_to_file is not None:
-        #     print('Saving results to predicting in {} minutes'.format((time.time() - t0) / 60))
+
+        print('Done predicting in {} minutes'.format((time.time() - t0) / 60))
         return all_tagged_sentence, all_sentence_tags
 
     def get_features(self, word, tags):
@@ -373,59 +396,59 @@ class POS_MEMM:
         features = []
         word_len = len(word)
 
-        #base features:
+        # base features:
         # 1 if xi = x and ti = t
         try:
             F100 = self.V_dict[word] * self.T_size + self.T_with_start_dict[tags[2]]
             features.append(F100)
         except:
-            tmp = 0 # must do something in except
+            tmp = 0  # must do something in except
         F100_len = self.V_size * self.T_size
 
         # trigram feature - 1 if <t(i-2),t(is),t(i)> = <t1,t2,t3>
         F103 = self.T_with_start_dict[tags[2]] * (self.T_size ** 2) + self.T_with_start_dict[tags[1]] * self.T_size + \
                self.T_with_start_dict[tags[0]]
         features.append(F103 + F100_len)
-        F103_len = F100_len + self.T_size**3
+        F103_len = F100_len + self.T_size ** 3
 
         # bigram feature - 1 if <t(i-1),t(i)> = <t1,t2>
         F104 = self.T_with_start_dict[tags[2]] * self.T_size + self.T_with_start_dict[tags[1]]
         features.append(F104 + F103_len)
-        F104_len = F103_len + self.T_size**2
+        F104_len = F103_len + self.T_size ** 2
 
         # complex features:
         if self.mode == 'complex':
 
             # F101: suffix of length  2/3/4 which is in suffix lists && tag <t(i)>
             if word_len > 2 and word[-2:] in self.suffix_2.keys():
-                F101_2 = self.suffix_2[word[-2:]]*self.T_size + self.T_with_start_dict[tags[2]]
+                F101_2 = self.suffix_2[word[-2:]] * self.T_size + self.T_with_start_dict[tags[2]]
                 features.append(F101_2 + F104_len)
-            F101_2_len = F104_len + self.T_size*len(self.suffix_2)
+            F101_2_len = F104_len + self.T_size * len(self.suffix_2)
             if word_len > 3 and word[-3:] in self.suffix_3.keys():
-                F101_3 = self.suffix_3[word[-3:]]*self.T_size + self.T_with_start_dict[tags[2]]
+                F101_3 = self.suffix_3[word[-3:]] * self.T_size + self.T_with_start_dict[tags[2]]
                 features.append(F101_3 + F101_2_len)
-            F101_3_len = F101_2_len + self.T_size*len(self.suffix_3)
+            F101_3_len = F101_2_len + self.T_size * len(self.suffix_3)
             if word_len > 4 and word[-4:] in self.suffix_4.keys():
-                F101_4 = self.suffix_4[word[-4:]]*self.T_size + self.T_with_start_dict[tags[2]]
+                F101_4 = self.suffix_4[word[-4:]] * self.T_size + self.T_with_start_dict[tags[2]]
                 features.append(F101_4 + F101_3_len)
-            F101_4_len = F101_3_len + self.T_size*len(self.suffix_4)
+            F101_4_len = F101_3_len + self.T_size * len(self.suffix_4)
             F101_len = F101_4_len
 
             # F102: prefix of length 2/3/4 letters which is in prefix list && tag <t(i)>
             if word_len > 2 and word[:2] in self.prefix_2.keys():
-                F102_2 = self.prefix_2[word[:2]]*self.T_size + self.T_with_start_dict[tags[2]]
+                F102_2 = self.prefix_2[word[:2]] * self.T_size + self.T_with_start_dict[tags[2]]
                 features.append(F102_2 + F101_len)
-            F102_2_len = F101_len + self.T_size*len(self.prefix_2)
+            F102_2_len = F101_len + self.T_size * len(self.prefix_2)
 
             if word_len > 3 and word[:3] in self.prefix_3.keys():
-                F102_3 = self.prefix_3[word[:3]]*self.T_size + self.T_with_start_dict[tags[2]]
+                F102_3 = self.prefix_3[word[:3]] * self.T_size + self.T_with_start_dict[tags[2]]
                 features.append(F102_3 + F102_2_len)
-            F102_3_len = F102_2_len + self.T_size*len(self.prefix_3)
+            F102_3_len = F102_2_len + self.T_size * len(self.prefix_3)
 
             if word_len > 4 and word[:4] in self.prefix_4.keys():
-                F102_4 = self.prefix_4[word[:4]]*self.T_size + self.T_with_start_dict[tags[2]]
+                F102_4 = self.prefix_4[word[:4]] * self.T_size + self.T_with_start_dict[tags[2]]
                 features.append(F102_4 + F102_3_len)
-            F102_4_len = F102_3_len + self.T_size*len(self.prefix_4)
+            F102_4_len = F102_3_len + self.T_size * len(self.prefix_4)
             F102_len = F102_4_len
 
             # F105: tag is <t(i)>
@@ -433,19 +456,19 @@ class POS_MEMM:
             features.append(F105 + F102_len)
             F105_len = F102_len + self.T_size
 
-            # F106: 
+            # F106: is last word w[i-1] and tag t[i]
             F106_len = F105_len + 0
 
-            # F107:
+            # F107: is next word w[i+1] and tag t[i]
             F107_len = F106_len + 0
 
-            # G1 : is the cuurent word a number and tag is t_i?
+            # G1 : is the current word a number and tag is t_i?
             if word[0].isdigit():
                 G1 = self.T_with_start_dict[tags[2]]
                 features.append(G1 + F107_len)
             G1_len = F107_len + self.T_size
 
-            # G2 : is the cuurent word starts in Upper case and tag is t_i?
+            # G2 : is the current word starts in Upper case and tag is t_i?
             if word[0].isupper() and word[0].isalpha():
                 G2 = self.T_with_start_dict[tags[2]]
                 features.append(G2 + G1_len)
@@ -544,7 +567,7 @@ class POS_MEMM:
         self.prefix_3 = prefix_3
         self.prefix_4 = prefix_4
 
-    def test(self, test_data_path, end=-1, start=0, verbosity=0):
+    def test(self, test_data_path, end=-1, start=0, verbosity=0, save_results_to_file=None):
         self.verbosity = verbosity
         (_, _, test, test_tag) = data_preprocessing(test_data_path, 'test')
 
@@ -561,15 +584,30 @@ class POS_MEMM:
             tot_length += len(tag_line)
             tot_correct += res
 
-        tot_accuracy = tot_correct/tot_length
+        tot_accuracy = tot_correct / tot_length
         print("Total accuracy is: ", tot_accuracy)
 
-        return tot_accuracy
+        if save_results_to_file is not None:
+            print('Saving predictions to {}'.format(save_results_to_file))
+            # creating directory
+            if not os.path.exists(save_results_to_file):
+                os.makedirs(save_results_to_file)
 
-    def save_model(self, resultsFn):
+            # creating and saving confusion matrix
+            self.create_confusion_matrix(all_sentence_tags, test_tag, save_results_to_file)
+
+            # saving predictions results as pkl
+            with open(save_results_to_file + '\\predictions_logs.pkl', 'wb') as f:
+                pickle.dump([all_sentence_tags, all_tagged_sentence, tot_accuracy], f)
+
+            # saving predictions in comp format: word_tag
+            with open(save_results_to_file + '\\predictions.txt', 'w') as f:
+                for s in all_tagged_sentence:
+                    f.writelines(s + '\n')
+
+        return tot_accuracy, all_sentence_tags, all_tagged_sentence, test_tag
+
+    def save_model(self, resultsfn):
         # dump all results:
-        with open(resultsFn+'.pkl', 'wb') as f:
+        with open(resultsfn + '\\model.pkl', 'wb') as f:
             pickle.dump(self, f)
-
-
-
