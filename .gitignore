@@ -1,12 +1,6 @@
 results.log
-train_results
 .idea
-pred_carmel.py
 data/carmel_test.txt
 data/carmel_test2.txt
 data/carmel_test3.txt
-NLP
-NLP/*
 data/test_data_carmel.txt
-bfgs.py
-results
