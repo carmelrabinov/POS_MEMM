@@ -1,12 +1,7 @@
-results.log
-train_results
 .idea
-pred_carmel.py
 data/carmel_test.txt
 data/carmel_test2.txt
 data/carmel_test3.txt
-NLP
-NLP/*
 data/test_data_carmel.txt
 data/debug.wtag
 bfgs.py
@@ -15,4 +10,7 @@ pos_memm/pos_memm_improved_set.py
 pos_memm/pos_memm_improved.py
 pos_memm/pos_memm_106_107.py
 pos_memm/__pycache__/*
+testing.xlsx
+results/*
 results
+pos_memm/__pycache__/
