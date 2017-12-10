@@ -1,6 +1,10 @@
-results.log
 .idea
 data/carmel_test.txt
 data/carmel_test2.txt
 data/carmel_test3.txt
 data/test_data_carmel.txt
+testing.xlsx
+results/*
+results
+pos_memm/__pycache__/*
+pos_memm/__pycache__/
