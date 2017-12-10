@@ -8,7 +8,6 @@ bfgs.py
 main_2.py
 pos_memm/pos_memm_improved_set.py
 pos_memm/pos_memm_improved.py
-pos_memm/pos_memm_106_107.py
 pos_memm/__pycache__/*
 testing.xlsx
 results/*
