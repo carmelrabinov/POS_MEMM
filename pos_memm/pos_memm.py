@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
 Created on Thu Dec  7 01:02:59 2017
-
 @author: carmelr
 """
 import time
@@ -18,7 +17,8 @@ from itertools import chain
 from scipy.misc import logsumexp
 from scipy.optimize import fmin_l_bfgs_b
 from collections import Counter
-
+from multiprocessing.pool import ThreadPool
+from multiprocessing import Pool
 
 def softmax(numerator, denominator):
     denominator_max = np.max(denominator)
@@ -28,7 +28,7 @@ def softmax(numerator, denominator):
 
 
 def load_model(Fn):
-    with open(Fn + '.pkl', 'rb') as f:
+    with open(Fn + '\\model.pkl', 'rb') as f:
         model = pickle.load(f)
     return model
 
@@ -78,6 +78,7 @@ def data_preprocessing(data_path, mode):
 
 class POS_MEMM:
     def __init__(self):
+        self.weights = 0
         self.feature_size = 0
         self.data = []
         self.data_tag = []
@@ -98,6 +99,29 @@ class POS_MEMM:
         self.prefix_2 = {}
         self.prefix_3 = {}
         self.prefix_4 = {}
+        self.features_dict = {}
+        self.features_dict_all_tags = {}
+        self.features_count_dict = {}
+
+    def build_features_dict(self):
+        for h, sen in enumerate(self.data):
+            tag_sen = self.data_tag[h]
+            isfirst = False
+            for i, word in enumerate(sen[:-1]):
+                if i == 0 or i == 1:
+                    continue
+                if i==2:
+                    isfirst = True
+                if (word, tag_sen[i - 2], tag_sen[i - 1], tag_sen[i], isfirst) in self.features_count_dict:
+                    self.features_count_dict[(word, tag_sen[i - 2], tag_sen[i - 1], tag_sen[i], isfirst)] += 1
+                else:
+                    self.features_dict[(word, tag_sen[i - 2], tag_sen[i - 1], tag_sen[i], isfirst)] = \
+                        self.get_features(word, [tag_sen[i - 2], tag_sen[i - 1], tag_sen[i]], isfirst)                        
+                    self.features_count_dict[(word, tag_sen[i - 2], tag_sen[i - 1], tag_sen[i], isfirst)] = 1
+                for tag in self.T:
+                    self.features_dict_all_tags[(word, tag_sen[i - 2], tag_sen[i - 1], tag, isfirst)] = \
+                        self.get_features(word, [tag_sen[i - 2], tag_sen[i - 1], tag], isfirst)
+
 
     def train(self, data_path, regularization=0.1, mode='base', spelling_threshold=10, verbosity=0):
         self.regularization = regularization
@@ -122,6 +146,10 @@ class POS_MEMM:
 
         self.feature_size = self.get_feature_size()
         self.weights = np.zeros(self.feature_size, dtype=np.float64)
+
+        print('Building features...')
+        self.build_features_dict()
+        print('Done!')
 
         print('Start training...')
         t0 = time.time()
@@ -176,7 +204,7 @@ class POS_MEMM:
         df = pd.DataFrame(max_failure_matrix, index=list(common_failure_tags.keys()), columns=self.T)
         df.to_csv(max_failure_matrix_fn, index=True, header=True, sep=',')
 
-    def calc_all_possible_tags_probabilities(self, xi, t1, t2, w):
+    def calc_all_possible_tags_probabilities(self, xi, t1, t2, w, isfirst = False):
         """
         calculate probability p(ti|xi,w)
         :param xi: the word[i]
@@ -187,104 +215,231 @@ class POS_MEMM:
         """
         denominator = np.zeros(self.T_size - 2)
         for i, tag in enumerate(self.T):
-            denominator[i] = np.sum(w[self.get_features(xi, [t2, t1, tag])])
+            if xi[0].islower() and tag == 'NNP': #debug
+                denominator[i] = 0 #debug
+            else: #debug
+                denominator[i] = np.sum(w[self.get_features(xi, [t2, t1, tag], isfirst)])
+        return softmax(denominator, denominator)
+
+#    def loss_grads(self, w):
+
+    def calc_all_possible_tags_probabilities_train(self, xi, t1, t2, w, isfirst):
+        """
+        calculate probability p(ti|xi,w)
+        :param xi: the word[i]
+        :param t1: POS tag for word[i-1]
+        :param t2: POS tag for word[i-2]
+        :param w: weights vector
+        :return: a list for all possible ti probabilities p(ti|xi,w) as float64
+        """
+        denominator = np.zeros(self.T_size - 2)
+        for i, tag in enumerate(self.T):
+            if xi[0].islower() and tag == 'NNP': #debug
+                denominator[i] = 0 #debug
+            else:
+                denominator[i] = np.sum(w[self.features_dict_all_tags[(xi, t2, t1, tag, isfirst)]])
         return softmax(denominator, denominator)
 
     def loss_grads(self, w):
+        t0 = time.time()
+        empirical_counts = np.zeros(self.feature_size, dtype=np.float64)
+        expected_counts = np.zeros(self.feature_size, dtype=np.float64)
 
-        # TODO: remove prints
-        # t0 = time.time()
-        w_grads = np.zeros(self.feature_size, dtype=np.float64)
-        for h, sentence in enumerate(self.data):
-            tag_sentence = self.data_tag[h]
+        # calculate normalization loss term
+        normalization_counts = self.regularization * w * len(self.data)
 
-            # calculate weights normalization term
-            normalization_counts = self.regularization * w
+        for key, features_inx in self.features_dict.items():
+            (word, t2, t1, t, isfirst) = key
+            count = self.features_count_dict[key]
 
-            # calculate empirical counts term
-            empirical_counts = np.zeros(self.feature_size, dtype=np.float64)
-            for i, word in enumerate(sentence[:-1]):
-                if i == 0 or i == 1:
-                    continue
-                empirical_counts[self.get_features(word, tag_sentence[i - 2:i + 1])] += 1
+            # calculate empirical loss term
+            empirical_counts[features_inx] += count
 
-                # calculate expected counts term
-            expected_counts = np.zeros(self.feature_size, dtype=np.float64)
+            # calculate p(y|x,w) for word x and for all possible tag[i]
+            p = self.calc_all_possible_tags_probabilities_train(word, t1, t2, w, isfirst)
 
-            # go over all words in sentence
-            for i, word in enumerate(sentence[:-1]):
-                # 2 first words are /* /* start symbols
-                if i == 0 or i == 1:
-                    continue
+            # calculate expected_loss term
+            for j, tag in enumerate(self.T):
+                tag_feat = self.features_dict_all_tags[(word, t2, t1, tag, isfirst)]
+                expected_counts[tag_feat] += p[j] * count
 
-                # calculate p(y|x,w) for word x and for all possible tag[i]
-                p = self.calc_all_possible_tags_probabilities(word, tag_sentence[i - 1], tag_sentence[i - 2], w)
+        w_grads = empirical_counts - expected_counts - normalization_counts
 
-                for j, tag in enumerate(self.T):
-                    # take features indexes for tag[i] = j
-                    tag_feat = self.get_features(word, [tag_sentence[i - 2], tag_sentence[i - 1], tag])
-
-                    # add p[j] to all features indexes that are equal to 1 (f_array[i - 2, j, :] is a list of indexes)
-                    expected_counts[tag_feat] += p[j]
-                    # TODO: need to insert something that checks for inf or nan like:  np.isinf(a).any()
-
-            # update grads for the sentence
-            w_grads += empirical_counts - expected_counts - normalization_counts
-        # TODO: remove prints
-        # print('Done calculate grads in {}, max abs grad is {}, max abs w is {}'.format((time.time()-t0)/60, np.max(np.abs(w_grads)), np.max(np.abs(w))))
+        if self.verbosity:
+            print('Done calculate grads in {}, max abs grad is {}, max abs w is {}'.format((time.time()-t0)/60, np.max(np.abs(w_grads)), np.max(np.abs(w))))
         return (-1) * w_grads
 
     def loss(self, w):
-        loss_ = 0
-        for h, sentence in enumerate(self.data):
-            tag_sentence = self.data_tag[h]
-            empirical_loss = 0
-            expected_loss = 0
+        t0 = time.time()
+        empirical_loss = 0
+        expected_loss = 0
 
-            # calculate normalization loss term
-            normalization_loss = np.sum(np.square(w)) * self.regularization / 2
+        # calculate normalization loss term
+        normalization_loss = (np.sum(np.square(w)) * self.regularization / 2) * len(self.data)
 
-            for i, word in enumerate(sentence[:-1]):
-                if i == 0 or i == 1:
-                    continue
-                # calculate empirical loss term
-                features_inx = self.get_features(word, tag_sentence[i - 2:i + 1])
-                empirical_loss += np.sum(w[features_inx])
+        for key, features_inx in self.features_dict.items():
+            (word, t2, t1, t, isfirst) = key
+            count = self.features_count_dict[key]
 
-                # calculate expected_loss term
-                exp_term = np.zeros(self.T_size - 2)
-                for j, tag in enumerate(self.T):
-                    exp_term[j] = np.sum(w[self.get_features(word, [tag_sentence[i - 2], tag_sentence[i - 1], tag])])
-                expected_loss += logsumexp(exp_term)
+            # calculate empirical loss term
+            empirical_loss += np.sum(w[features_inx]) * count
 
-            loss_ += empirical_loss - expected_loss - normalization_loss
+            # calculate expected_loss term
+            exp_term = np.zeros(self.T_size - 2)
+            for j, tag in enumerate(self.T):
+                exp_term[j] = np.sum(w[self.features_dict_all_tags[(word, t2, t1, tag, isfirst)]])
+            expected_loss += logsumexp(exp_term) * count
+
+        loss_ = empirical_loss - expected_loss - normalization_loss
         if self.verbosity:
-            print('Loss is: {}'.format((-1) * loss_))
+            print('Done calculate Loss in {} minutes, Loss is: {}'.format((time.time() - t0)/60, (-1) * loss_))
         return (-1) * loss_
 
     def get_feature_size(self):
         size_dict = {}
-        size_dict['F100'] = self.V_size * self.T_size  # represens word ant tag for all possible combinations
-        size_dict['F103'] = self.T_size ** 3  # trigram of tags
-        size_dict['F104'] = self.T_size ** 2  # bigram of tags
+        size_dict['F100'] = self.V_size * self.T_size # represens word ant tag for all possible combinations
+        size_dict['F103'] = self.T_size**3 # trigram of tags
+        size_dict['F104'] = self.T_size**2 # bigram of tags
         if self.mode == 'complex':
-            size_dict['F101_2'] = self.T_size * len(
-                self.suffix_2)  # all posible tags for each word in importnat suffix list
-            size_dict['F101_3'] = self.T_size * len(
-                self.suffix_3)  # all posible tags for each word in importnat suffix list
-            size_dict['F101_4'] = self.T_size * len(
-                self.suffix_4)  # all posible tags for each word in importnat suffix list
-            size_dict['F102_2'] = self.T_size * len(
-                self.prefix_2)  # all posible tags for each word in importnat prefix list
-            size_dict['F102_3'] = self.T_size * len(
-                self.prefix_3)  # all posible tags for each word in importnat prefix list
-            size_dict['F102_4'] = self.T_size * len(
-                self.prefix_4)  # all posible tags for each word in importnat prefix list
-            size_dict['F105'] = self.T_size  # unigram of tag
-            size_dict['G1'] = self.T_size  # is current word a number + the current tag
+            size_dict['F101_2'] = self.T_size*len(self.suffix_2) # all posible tags for each word in importnat suffix list
+            size_dict['F101_3'] = self.T_size*len(self.suffix_3) # all posible tags for each word in importnat suffix list
+            size_dict['F101_4'] = self.T_size*len(self.suffix_4) # all posible tags for each word in importnat suffix list
+            size_dict['F102_2'] = self.T_size*len(self.prefix_2) # all posible tags for each word in importnat prefix list
+            size_dict['F102_3'] = self.T_size*len(self.prefix_3) # all posible tags for each word in importnat prefix list
+            size_dict['F102_4'] = self.T_size*len(self.prefix_4) # all posible tags for each word in importnat prefix list
+            size_dict['F105'] = self.T_size # unigram of tag
+            size_dict['F106'] = self.V_size * self.T_size # representes last word and current tag
+            size_dict['F107'] = self.V_size * self.T_size # representes next word and current tag
+            size_dict['G1'] = self.T_size  # is current word of the form <number-word> and tagged as t(i)
             size_dict['G2'] = self.T_size  # is current word starts with Upper case + the current tag
+            size_dict['G3'] = self.T_size  # is Upper case and first word in sentance, with tag t(i)
+            size_dict['G4'] = self.T_size  # is Upper case and *not* first word in sentance, with tag t(i)
+            size_dict['G5'] = self.T_size  # is the all word in uppercase, with tag t(i)
+            size_dict['G6'] = self.T_size  # is the all word in number, with tag t(i)
 
         return sum(size_dict.values())
+
+    def predict_parallel(self, corpus, verbosity=0):
+
+        print('Start predicting...')
+        t0 = time.time()
+        self.verbosity = verbosity
+
+        self.build_predict_prob_matrix(corpus)
+
+        pool = ThreadPool()     #Pool(processes=5, maxtasksperchild=3)
+        res = pool.map(self.predict_sentence, corpus)
+        pool.close()
+        pool.join()
+
+        all_sentence_tags = [x[1] for x in res]
+        all_tagged_sentence = [x[0] for x in res]
+
+        del self.prob_mat, self.V_COMP_dict
+        self.verbosity = 0
+        print('predict_parallel in time: {} min'.format((time.time() - t0)/60))
+        return all_tagged_sentence, all_sentence_tags
+
+    def build_word_prob_matrix(self, word):
+
+        prob_mat = np.zeros((self.T_size - 2, self.T_size - 2, self.T_size - 2))
+
+        for u in self.T:  # for each t-1 possible tag
+            for t in self.T:  # for each t-2 possible tag:
+                prob_mat[:, self.T_dict[u],
+                self.T_dict[t]] = self.calc_all_possible_tags_probabilities(word, u, t, self.weights)
+
+        return word, prob_mat
+
+    def build_predict_prob_matrix(self, corpus):
+        print('Building prob matrix...')
+        t0 = time.time()
+        # init a list of singular words in the target corpus:
+        V_COMP = sorted(list(set(chain(*corpus))))
+        V_COMP_size = len(V_COMP)
+        self.V_COMP_dict = {}
+        for i, v in enumerate(V_COMP):
+            self.V_COMP_dict[v] = i
+
+        # init probability matrix:
+        # holds all p(word,t(i),t(i-1),t(i-2))
+        self.prob_mat = np.zeros((V_COMP_size, self.T_size - 2, self.T_size - 2, self.T_size - 2))
+
+        pool = Pool()
+        res = pool.map(self.build_word_prob_matrix, V_COMP)
+        pool.close()
+        pool.join()
+
+        for touple in res:
+            self.prob_mat[self.V_COMP_dict[touple[0]], :, :, :] = touple[1]
+        print('Build prob matrix in time: {} min'.format((time.time() - t0)/60))
+
+    def predict_sentence(self, sentence):
+        # init empty array of strings to save the tag for each word in the sentance
+        sentence_len = len(sentence)
+        sentence_tags = ['' for x in range(sentence_len)]
+
+        # init dynamic matrix with size:
+        # pi_matrix[k,t(i-1),t(i)] is the value of word number k, preciding tag u and t accordingly
+        pi_matrix = np.zeros((sentence_len, self.T_size - 2, self.T_size - 2))
+
+        # init back pointers matrix:
+        # bp[k,t,u] is the tag index of word number k-2, following tag t and u accordingly
+        bp = np.zeros((sentence_len, self.T_size - 2, self.T_size - 2), dtype=np.int)
+
+        for k in range(0, sentence_len):  # for each word in the sentence
+
+            for current_tag in self.T:  # for each t possible tag
+
+                if k == 0:
+                    # at the first two words there is no meaning to the k-1 tag index. pi[k-1]
+                    pi_matrix[k, 0, :] = 1 * self.calc_all_possible_tags_probabilities(sentence[k], '/*', '/*',
+                                                                                       self.weights)
+                    break
+                elif k == 1:
+                    for u in self.T:  # for each t-1 possible tag
+                        pi_matrix[k, self.T_dict[u], :] = pi_matrix[k - 1, 0, self.T_dict[
+                            u]] * self.calc_all_possible_tags_probabilities(sentence[k], u, '/*', self.weights)
+                    break
+                else:
+                    for u in self.T:  # for each t-1 possible tag
+
+                        # calculate pi value, and check if it exeeds the current max:
+                        pi_values = pi_matrix[k - 1, :, self.T_dict[u]] * self.prob_mat[self.V_COMP_dict[sentence[k]],
+                                                                          self.T_dict[current_tag], self.T_dict[u],
+                                                                          :]
+                        ind = np.argmax(pi_values)
+                        if pi_values[ind] > pi_matrix[k, self.T_dict[u], self.T_dict[current_tag]]:
+                            # update max:
+                            pi_matrix[k, self.T_dict[u], self.T_dict[current_tag]] = pi_values[ind]
+
+                            # update back pointers:
+                            bp[k, self.T_dict[u], self.T_dict[current_tag]] = ind
+
+        u_ind, curr_ind = np.unravel_index(pi_matrix[sentence_len - 1, :, :].argmax(),
+                                           pi_matrix[sentence_len - 1, :, :].shape)
+        sentence_tags[-2:] = [self.T[u_ind], self.T[curr_ind]]
+
+        # extracting MEMM tags path from back pointers matrix:
+        for i in range(sentence_len - 3, -1, -1):
+            # calculate the idx of tag i in T db:
+            # reminder - bp[k,t,u] is the tag of word k-2, following tag t and u accordingly
+            k_tag_idx = bp[i + 2, self.T_dict[sentence_tags[i + 1]], self.T_dict[sentence_tags[i + 2]]]
+
+            # update the i-th tag to the list of tags
+            sentence_tags[i] = self.T[k_tag_idx]
+
+        # build tagged sentence:
+        tagged_sentence = ''
+        for i in range(sentence_len):
+            tagged_sentence += (sentence[i] + '_')
+            tagged_sentence += sentence_tags[i] + (' ')
+
+        if self.verbosity:
+            print(tagged_sentence)
+
+        return tagged_sentence, sentence_tags
+
 
     def predict(self, corpus, verbosity=0):
         """
@@ -387,7 +542,7 @@ class POS_MEMM:
         print('Done predicting in {} minutes'.format((time.time() - t0) / 60))
         return all_tagged_sentence, all_sentence_tags
 
-    def get_features(self, word, tags):
+    def get_features(self, word, tags, is_first=False):
         """
         :param word: the word
         :param tags: POS tags of the trigram as as a list <t(i-2), t(i-1), t(i)>
@@ -457,13 +612,14 @@ class POS_MEMM:
             F105_len = F102_len + self.T_size
 
             # F106: is last word w[i-1] and tag t[i]
-            F106_len = F105_len + 0
+            F106_len = F105_len + self.V_size * self.T_size            
 
             # F107: is next word w[i+1] and tag t[i]
-            F107_len = F106_len + 0
+            F107_len = F106_len + self.V_size * self.T_size   
 
-            # G1 : is the current word a number and tag is t_i?
-            if word[0].isdigit():
+            # G1 : is the current word in the form of <number-noun> (e.g 12-inch) and tagged as t(i)?
+            number_check = word.partition('-')
+            if number_check[0].isdigit() and number_check[1] == '-' and not number_check[2].isdigit():
                 G1 = self.T_with_start_dict[tags[2]]
                 features.append(G1 + F107_len)
             G1_len = F107_len + self.T_size
@@ -473,6 +629,32 @@ class POS_MEMM:
                 G2 = self.T_with_start_dict[tags[2]]
                 features.append(G2 + G1_len)
             G2_len = G1_len + self.T_size
+            
+            # G3 : is word tagged as t(i), is Capital letter and first word in sentance?
+            if word[0].isupper() and is_first:
+                G3 = self.T_with_start_dict[tags[2]]
+                features.append(G3 + G2_len)
+            G3_len = G2_len + self.T_size
+            
+            # G4 : is  word tagged as t(i), it Capital letter and first word in sentance?
+            if word[0].isupper() and not is_first:
+                G4 = self.T_with_start_dict[tags[2]]
+                features.append(G4 + G3_len)
+            G4_len = G3_len + self.T_size 
+            
+            # G5 : is the all word in uppercase and tagged as t(i)?
+            if word.isupper():
+                G5 = self.T_with_start_dict[tags[2]]
+                features.append(G5 + G4_len)
+            G5_len = G4_len + self.T_size 
+            
+            # G6 : is all the word is digits (even if seperated by '.'), and taged as t(i)?
+            number_check = word.partition('.')
+            if number_check[0].isdigit():
+                if number_check[2] == '' or number_check[2].isdigit():
+                    G6 = self.T_with_start_dict[tags[2]]
+                    features.append(G6 + G5_len)
+            G6_len = G5_len + self.T_size 
 
         return features
 
@@ -567,12 +749,16 @@ class POS_MEMM:
         self.prefix_3 = prefix_3
         self.prefix_4 = prefix_4
 
-    def test(self, test_data_path, end=-1, start=0, verbosity=0, save_results_to_file=None):
+    def test(self, test_data_path, end=0, start=0, verbosity=0, save_results_to_file=None):
         self.verbosity = verbosity
         (_, _, test, test_tag) = data_preprocessing(test_data_path, 'test')
 
-        corpus = test[start:end]
-        corpus_tag = test_tag[start:end]
+        if end:
+            corpus = test[start:end]
+            corpus_tag = test_tag[start:end]
+        else:
+            corpus = test[start:]
+            corpus_tag = test_tag[start:]
 
         # run Viterbi algorithm
         (all_tagged_sentence, all_sentence_tags) = self.predict(corpus, verbosity=verbosity)
@@ -608,6 +794,11 @@ class POS_MEMM:
         return tot_accuracy, all_sentence_tags, all_tagged_sentence, test_tag
 
     def save_model(self, resultsfn):
+        print('Saving model to {}'.format(resultsfn))
+        # creating directory
+        if not os.path.exists(resultsfn):
+            os.makedirs(resultsfn)
+
         # dump all results:
         with open(resultsfn + '\\model.pkl', 'wb') as f:
             pickle.dump(self, f)
