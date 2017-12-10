@@ -3,9 +3,13 @@ data/carmel_test.txt
 data/carmel_test2.txt
 data/carmel_test3.txt
 data/test_data_carmel.txt
+data/debug.wtag
+main_2.py
+pos_memm/pos_memm_improved_set.py
+pos_memm/pos_memm_improved.py
+pos_memm/__pycache__/*
 testing.xlsx
 results/*
 results
-pos_memm/__pycache__/*
 pos_memm/__pycache__/
 main.py

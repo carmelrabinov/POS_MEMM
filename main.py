@@ -9,6 +9,7 @@ from pos_memm.pos_memm import POS_MEMM, load_model, data_preprocessing, analyze_
 import os
 import argparse
 import sys
+import time
 import numpy as np
 
 if __name__ == '__main__':
@@ -16,6 +17,7 @@ if __name__ == '__main__':
     parser.add_argument('results_dir', help='output results')
     parser.add_argument('-regularization', type=np.float64, default=0.005)
     parser.add_argument('-toy', action='store_true')
+    parser.add_argument('-baba', action='store_true')
     parser.add_argument('-threshold', type=int, default=5)
     parser.add_argument('-verbosity', type=int, default=0)
     parser.add_argument('-mode', type=str, default='complex')
@@ -27,8 +29,7 @@ if __name__ == '__main__':
     test_path = project_dir + '\\data\\test.wtag'
     comp_path = project_dir + '\\data\\comp.words'
     data_path = project_dir + '\\data\\train.wtag'
-    training_time = 0
-    testing_time = 0
+
 
     if toy:
         # results_dir = 'debug'
@@ -39,6 +40,18 @@ if __name__ == '__main__':
         # regularization = 0.005
         mode = 'base'
         # verbosity = 1
+
+    if baba:
+        from pos_memm.pos_memm_106_107 import POS_MEMM as POS_MEMM
+#        results_dir = 'baba'
+#        project_dir = 'C:\\Users\\amirli\\Desktop\\amir\\part_of_speech_taging_MEMM-carmel\\POS_MEMM'
+#        results_path = project_dir + '\\results\\' + results_dir
+#        test_path = project_dir + '\\data\\debug.wtag'
+#        data_path = project_dir + '\\data\\debug.wtag'
+#        regularization = 0.05
+#        mode = 'complex'
+#        verbosity = 1
+        
 
     # save logs
     if not os.path.exists(results_path):
