@@ -8,3 +8,4 @@ results/*
 results
 pos_memm/__pycache__/*
 pos_memm/__pycache__/
+main.py

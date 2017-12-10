@@ -31,14 +31,14 @@ if __name__ == '__main__':
     testing_time = 0
 
     if toy:
-        results_dir = 'debug'
+        # results_dir = 'debug'
         project_dir = 'D:\\TECHNION\\NLP\\part_of_speech_taging_MEMM'
         results_path = project_dir + '\\results\\' + results_dir
         test_path = project_dir + '\\data\\carmel_test2.txt'
         data_path = project_dir + '\\data\\carmel_test3.txt'
-        regularization = 0.005
+        # regularization = 0.005
         mode = 'base'
-        verbosity = 1
+        # verbosity = 1
 
     # save logs
     if not os.path.exists(results_path):
