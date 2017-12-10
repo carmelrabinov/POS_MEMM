@@ -42,15 +42,16 @@ if __name__ == '__main__':
         verbosity = 1
 
     if baba:
-        from pos_memm.pos_memm_106_107 import POS_MEMM as POS_MEMM
-#        results_dir = 'baba'
-#        project_dir = 'C:\\Users\\amirli\\Desktop\\amir\\part_of_speech_taging_MEMM-carmel\\POS_MEMM'
-#        results_path = project_dir + '\\results\\' + results_dir
-#        test_path = project_dir + '\\data\\debug.wtag'
-#        data_path = project_dir + '\\data\\debug.wtag'
-#        regularization = 0.05
-#        mode = 'complex'
-#        verbosity = 1
+        from pos_memm.pos_memm import POS_MEMM
+        results_dir = 'baba'
+        project_dir = 'C:\\Users\\amirli\\Desktop\\amir\\part_of_speech_taging_MEMM-carmel\\POS_MEMM'
+        results_path = project_dir + '\\results\\' + results_dir
+        test_path = project_dir + '\\data\\debug.wtag'
+        data_path = project_dir + '\\data\\debug.wtag'
+        regularization = 0.05
+        mode = 'complex'
+        verbosity = 1
+        log_path = project_dir + '\\results\\' + results_dir + '\\logs.log'
         
 
     # save logs

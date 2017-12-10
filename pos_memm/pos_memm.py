@@ -269,7 +269,7 @@ class POS_MEMM:
 
 #    def loss_grads(self, w):
 
-    def calc_all_possible_tags_probabilities_train(self, xi, t1, t2, w):
+    def calc_all_possible_tags_probabilities_train(self, xi, t1, t2, w, isfirst = False):
         """
         calculate probability p(ti|xi,w)
         :param xi: the word[i]
@@ -280,7 +280,7 @@ class POS_MEMM:
         """
         denominator = np.zeros(self.T_size - 2)
         for i, tag in enumerate(self.T):
-            denominator[i] = np.sum(w[self.features_dict_all_tags[(xi, t2, t1, tag)]])
+            denominator[i] = np.sum(w[self.features_dict_all_tags[(xi, t2, t1, tag, isfirst)]])
         return softmax(denominator, denominator)
 
     def loss_grads(self, w):
