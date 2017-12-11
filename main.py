@@ -19,6 +19,8 @@ if __name__ == '__main__':
     parser.add_argument('-baba', action='store_true')
     parser.add_argument('-spelling_threshold', type=int, default=8)
     parser.add_argument('-word_threshold', type=int, default=3)
+    parser.add_argument('-parallel', action='store_true')
+    parser.add_argument('-use_106_107', action='store_true')
     parser.add_argument('-verbosity', type=int, default=0)
     parser.add_argument('-mode', type=str, default='complex')
     parser.parse_args(namespace=sys.modules['__main__'])
@@ -30,17 +32,18 @@ if __name__ == '__main__':
     comp_path = project_dir + '\\data\\comp.words'
     data_path = project_dir + '\\data\\train.wtag'
 
-    if toy:
-        results_dir = 'tmp'
-        project_dir = 'D:\\TECHNION\\NLP\\part_of_speech_taging_MEMM'
-        results_path = project_dir + '\\results\\' + results_dir
-        test_path = project_dir + '\\data\\carmel_test2.txt'
-        data_path = project_dir + '\\data\\carmel_test.txt'
-        regularization = 0.0005
-        mode = 'complex'
-        verbosity = 1
-        log_path = project_dir + '\\results\\' + results_dir + '\\logs_parallel.txt'
-
+    # if toy:
+    #     results_dir = 'tmp2'
+    #     project_dir = 'D:\\TECHNION\\NLP\\part_of_speech_taging_MEMM'
+    #     results_path = project_dir + '\\results\\' + results_dir
+    #     # test_path = project_dir + '\\data\\carmel_test4.txt'
+    #     data_path = project_dir + '\\data\\carmel_test.txt'
+    #     regularization = 0.0005
+    #     mode = 'complex'
+    #     verbosity = 1
+    #     parallel = True
+    #     log_path = project_dir + '\\results\\' + results_dir + '\\logs_parallel.txt'
+    #
     # if baba:
     #     from pos_memm.pos_memm import POS_MEMM
     #     results_dir = 'baba'
@@ -51,8 +54,8 @@ if __name__ == '__main__':
     #     regularization = 0.05
     #     mode = 'complex'
     #     verbosity = 1
+    #     use_106_107 = False
     #     log_path = project_dir + '\\results\\' + results_dir + '\\logs.log'
-
 
     # save logs
     if not os.path.exists(results_path):
@@ -72,10 +75,16 @@ if __name__ == '__main__':
                 regularization=regularization,
                 log_path=log_path,
                 spelling_threshold=spelling_threshold,
-                word_count_threshold=word_threshold)
+                word_count_threshold=word_threshold,
+                use_106_107=use_106_107)
+
     model.save_model(results_path)
     # model = load_model(results_path)
-    model.test(test_path, verbosity=verbosity, save_results_to_file=results_path)
+    model.test(test_path,
+               verbosity=verbosity,
+               parallel=parallel,
+               save_results_to_file=results_path,
+               log_path=log_path)
     # model.save_model(results_path)
 
     # pred_path = project_dir + '\\results\\complex_all_regularization_0_0005\\predictions.txt'
