@@ -32,18 +32,31 @@ if __name__ == '__main__':
     comp_path = project_dir + '\\data\\comp.words'
     data_path = project_dir + '\\data\\train.wtag'
 
-    # if toy:
-    #     results_dir = 'tmp2'
-    #     project_dir = 'D:\\TECHNION\\NLP\\part_of_speech_taging_MEMM'
-    #     results_path = project_dir + '\\results\\' + results_dir
-    #     # test_path = project_dir + '\\data\\carmel_test4.txt'
-    #     data_path = project_dir + '\\data\\carmel_test.txt'
-    #     regularization = 0.0005
-    #     mode = 'complex'
-    #     verbosity = 1
-    #     parallel = True
-    #     log_path = project_dir + '\\results\\' + results_dir + '\\logs_parallel.txt'
-    #
+    if toy:
+        test_path = project_dir + '\\data\\test.wtag'
+        comp_path = project_dir + '\\data\\comp.words'
+        data_path = project_dir + '\\data\\train.wtag'
+
+        # results_dir = 'tmp2'
+        # project_dir = 'D:\\TECHNION\\NLP\\part_of_speech_taging_MEMM'
+        # results_path = project_dir + '\\results\\' + results_dir
+        # test_path = project_dir + '\\data\\carmel_test4.txt'
+        # data_path = project_dir + '\\data\\carmel_test2.txt'
+        test_path = project_dir + '\\data\\test_half.wtag'
+        data_path = project_dir + '\\data\\train_and_half_test.wtag'
+
+        regularization = 0.0005
+        # mode = 'complex'
+        verbosity = 1
+        word_threshold = 2
+        spelling_threshold = 5
+        # parallel = False
+        use_106_107 = True
+        # log_path = project_dir + '\\results\\' + results_dir + '\\logs_parallel.txt'
+
+
+
+
     # if baba:
     #     from pos_memm.pos_memm import POS_MEMM
     #     results_dir = 'baba'

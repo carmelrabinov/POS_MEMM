@@ -160,12 +160,15 @@ class POS_MEMM:
                 if (words, tag_sen[i - 2], tag_sen[i - 1], tag_sen[i], isfirst) in self.features_count_dict:
                     self.features_count_dict[(words, tag_sen[i - 2], tag_sen[i - 1], tag_sen[i], isfirst)] += 1
                 else:
-                    self.features_dict[(words, tag_sen[i - 2], tag_sen[i - 1], tag_sen[i], isfirst)] = \
-                        self.get_features(words, [tag_sen[i - 2], tag_sen[i - 1], tag_sen[i]], isfirst)
+                    feature = self.get_features(words, [tag_sen[i - 2], tag_sen[i - 1], tag_sen[i]], isfirst)
+                    self.features_dict[(words, tag_sen[i - 2], tag_sen[i - 1], tag_sen[i], isfirst)] = feature
+
                     self.features_count_dict[(words, tag_sen[i - 2], tag_sen[i - 1], tag_sen[i], isfirst)] = 1
+
+                feature_all_tags = []
                 for tag in self.T:
-                    self.features_dict_all_tags[(words, tag_sen[i - 2], tag_sen[i - 1], tag, isfirst)] = \
-                        self.get_features(words, [tag_sen[i - 2], tag_sen[i - 1], tag], isfirst)
+                    feature_all_tags.append(self.get_features(words, [tag_sen[i - 2], tag_sen[i - 1], tag], isfirst))
+                self.features_dict_all_tags[(words, tag_sen[i - 2], tag_sen[i - 1], isfirst)] = feature_all_tags
 
     def train(self, data_path, regularization=0.1, mode='base', spelling_threshold=8,
               word_count_threshold=3, use_106_107=False, verbosity=0, log_path=None):
@@ -178,6 +181,7 @@ class POS_MEMM:
 
         (self.V, self.T_with_start, self.data, self.data_tag) = data_preprocessing(data_path, 'train')
 
+        print('Initializing internal dictionaries...')
         self.T = [x for x in self.T_with_start if (x != '/*' and x != '/STOP')]
 
         for i, tag in enumerate(self.T):
@@ -193,16 +197,17 @@ class POS_MEMM:
         self.V_count = Counter(chain(*self.data))
         self.word_count_threshold = word_count_threshold
 
-        for word in self.V:
-            all_tags = [self.data_tag[i][j] for i, row in enumerate(self.data)
-                        for j, elem in enumerate(row) if elem == word]
-            self.V_tags_dict[word] = list(set(all_tags))
+        # for word in self.V:
+        #     all_tags = [self.data_tag[i][j] for i, row in enumerate(self.data)
+        #                 for j, elem in enumerate(row) if elem == word]
+        #     self.V_tags_dict[word] = list(set(all_tags))
 
         self.spelling_threshold = spelling_threshold
         self.init_spelling_dicts()
 
         self.feature_size = self.get_feature_size()
         self.weights = np.zeros(self.feature_size, dtype=np.float64)
+        print('Done!')
 
         print('Building features...')
         self.build_features_dict()
@@ -223,14 +228,14 @@ class POS_MEMM:
             self.weights = optimal_params[0]
             if log_path is not None:
                 with open(log_path, 'a') as f:
-                    f.writelines('\nTrain data:')
+                    f.writelines('\nTrain data:\n')
                     f.writelines('Number of sentences trained on: {}\n'.format(len(self.data)))
                     f.writelines('T size: {}\n'.format(self.T_size - 2))
                     f.writelines('V size: {}\n'.format(self.V_size))
                     f.writelines('Use 106 and 107 features: {}\n'.format(self.use_106_107))
                     f.writelines('Training time: {}\n'.format(training_time))
-                    f.writelines('Iterations number: '.format(optimal_params[2]['nit']))
-                    f.writelines('Calls number: '.format(optimal_params[2]['funcalls']))
+                    f.writelines('Iterations number: {}\n'.format(optimal_params[2]['nit']))
+                    f.writelines('Calls number: {}\n'.format(optimal_params[2]['funcalls']))
 
         del self.data, self.data_tag
 
@@ -285,10 +290,43 @@ class POS_MEMM:
         :param w: weights vector
         :return: a list for all possible ti probabilities p(ti|xi,w) as float64
         """
-        denominator = np.zeros(self.T_size - 2)
-        for i, tag in enumerate(self.T):
-            denominator[i] = np.sum(w[self.get_features(words, [t2, t1, tag], isfirst)])
+        feature_all_tags = []
+        for tag in self.T:
+            feature_all_tags.append(self.get_features(words, [t2, t1, tag], isfirst))
+        denominator = np.sum(w[feature_all_tags], axis=1)
+
+        # denominator = np.zeros(self.T_size - 2)
+        # for i, tag in enumerate(self.T):
+        #     denominator[i] = np.sum(w[self.get_features(words, [t2, t1, tag], isfirst)])
         return softmax(denominator, denominator)
+
+    def calc_all_possible_tags_probabilities_pred(self, words, w, isfirst=False):
+        """
+        calculate probability p(ti|xi,w)
+        :param words: the words[i-1,i,i+1]
+        :param t1: POS tag for word[i-1]
+        :param t2: POS tag for word[i-2]
+        :param w: weights vector
+        :return: a list for all possible ti probabilities p(ti|xi,w) as float64
+        """
+        feature_all_t = []
+        for t in self.T:  # for each t-2 possible tag
+            feature_all_u = []
+            for u in self.T:  # for each t-1 possible tag:
+                if (words, t, u, isfirst) in self.features_dict_all_tags:
+                    feature_all_u.append(self.features_dict_all_tags[(words, t, u, isfirst)])
+                else:
+                    feature_all_tags = []
+                    for tag in self.T:
+                        feature_all_tags.append(self.get_features(words, [u, t, tag], isfirst))
+                    feature_all_u.append(feature_all_tags)
+            feature_all_t.append(feature_all_u)
+        all_tags = np.array(np.sum(w[feature_all_t], axis=3))
+        denominator = np.sum(np.exp(all_tags), axis=2)
+        for i, tag in enumerate(self.T):
+            val = all_tags[:, :, i]
+            all_tags[:, :, i] = np.exp(val) / denominator
+        return np.transpose(all_tags)
 
     def calc_all_possible_tags_probabilities_train(self, words, t1, t2, w, isfirst=False):
         """
@@ -299,9 +337,11 @@ class POS_MEMM:
         :param w: weights vector
         :return: a list for all possible ti probabilities p(ti|xi,w) as float64
         """
-        denominator = np.zeros(self.T_size - 2)
-        for i, tag in enumerate(self.T):
-            denominator[i] = np.sum(w[self.features_dict_all_tags[(words, t2, t1, tag, isfirst)]])
+        # denominator = np.zeros(self.T_size - 2)
+        # for i, tag in enumerate(self.T):
+        #     denominator[i] = np.sum(w[self.features_dict_all_tags[(words, t2, t1, tag, isfirst)]])
+
+        denominator = np.sum(w[self.features_dict_all_tags[(words, t2, t1, isfirst)]], axis=1)
         return softmax(denominator, denominator)
 
     def loss_grads(self, w):
@@ -323,9 +363,14 @@ class POS_MEMM:
             p = self.calc_all_possible_tags_probabilities_train(words, t1, t2, w, isfirst)
 
             # calculate expected_loss term
-            for j, tag in enumerate(self.T):
-                tag_feat = self.features_dict_all_tags[(words, t2, t1, tag, isfirst)]
-                expected_counts[tag_feat] += p[j] * count
+            tag_feat = self.features_dict_all_tags[(words, t2, t1, isfirst)]
+            expected_size = expected_counts[tag_feat].shape[1]
+            expected_counts[tag_feat] += np.transpose(np.tile(p, (expected_size, 1))) * count
+
+            # calculate expected_loss term - old
+            # for j, tag in enumerate(self.T):
+            #     tag_feat = self.features_dict_all_tags[(words, t2, t1, tag, isfirst)]
+            #     expected_counts[tag_feat] += p[j] * count
 
         w_grads = empirical_counts - expected_counts - normalization_counts
         if self.verbosity:
@@ -350,9 +395,10 @@ class POS_MEMM:
             empirical_loss += np.sum(w[features_inx]) * count
 
             # calculate expected_loss term
-            exp_term = np.zeros(self.T_size - 2)
-            for j, tag in enumerate(self.T):
-                exp_term[j] = np.sum(w[self.features_dict_all_tags[(words, t2, t1, tag, isfirst)]])
+            exp_term = np.sum(w[self.features_dict_all_tags[(words, t2, t1, isfirst)]], axis=1)  # TODO
+            # exp_term = np.zeros(self.T_size - 2)
+            # for j, tag in enumerate(self.T):
+            #     exp_term[j] = np.sum(w[self.features_dict_all_tags[(words, t2, t1, tag, isfirst)]])
             expected_loss += logsumexp(exp_term) * count
 
         loss_ = empirical_loss - expected_loss - normalization_loss
@@ -638,13 +684,15 @@ class POS_MEMM:
                             words = tuple(sentence[k - 1:k + 2])
 
                     if not prob_mat[V_COMP_dict[words], 0, 0, 0].any():
-                        for u in self.T:  # for each t-1 possible tag
-                            for t in self.T:  # for each t-2 possible tag:
-                                # if this is the last word - send the next word as "STOP"
-                                prob_mat[V_COMP_dict[words], :, self.T_dict[u],
-                                self.T_dict[t]] = self.calc_all_possible_tags_probabilities(words, u, t, self.weights)
-                        if self.verbosity:
-                            print('Finished calculate prob matrix for: ', words)
+                        # for u in self.T:  # for each t-1 possible tag
+                        #     for t in self.T:  # for each t-2 possible tag:
+                        #         # if this is the last word - send the next word as "STOP"
+                        #         prob_mat[V_COMP_dict[words], :, self.T_dict[u],
+                        #         self.T_dict[t]] = self.calc_all_possible_tags_probabilities(words, u, t, self.weights)
+
+                        prob_mat[V_COMP_dict[words], :, :, :] = self.calc_all_possible_tags_probabilities_pred(words, self.weights)
+                        # if self.verbosity:
+                        #     print('Finished calculate prob matrix for: ', words)
 
                 for current_tag in self.T:  # for each t possible tag
 
@@ -653,7 +701,7 @@ class POS_MEMM:
                         if self.use_106_107:
                             words = ('/*', sentence[k], sentence[k + 1])
                         pi_matrix[k, 0, :] = 1 * self.calc_all_possible_tags_probabilities(words, '/*', '/*',
-                                                                                           self.weights)
+                                                                                           self.weights, True)
                         break
                     elif k == 1:
                         if self.use_106_107:
@@ -705,6 +753,8 @@ class POS_MEMM:
         prediction_time = (time.time() - t0) / 60
         if log_path is not None:
             with open(log_path, 'a') as f:
+                f.writelines('\nPrediction data:\n')
+                f.writelines('Number of sentences predicted: {}\n'.format(len(corpus)))
                 f.writelines('Prediction time: {}\n'.format(prediction_time))
 
         print('Done predicting in {} minutes'.format(prediction_time))
@@ -864,7 +914,7 @@ class POS_MEMM:
 
         if log_path is not None:
             with open(log_path, 'a') as f:
-                f.writelines('\nTest data:')
+                f.writelines('\nTest data:\n')
                 f.writelines('Number of sentences tested on: {}\n'.format(len(corpus)))
                 f.writelines('Total accuracy: {}\n'.format(tot_accuracy))
 
