@@ -20,42 +20,45 @@ if __name__ == '__main__':
     parser.add_argument('-spelling_threshold', type=int, default=8)
     parser.add_argument('-word_threshold', type=int, default=3)
     parser.add_argument('-parallel', action='store_true')
-    parser.add_argument('-use_106_107', action='store_true')
     parser.add_argument('-verbosity', type=int, default=0)
     parser.add_argument('-mode', type=str, default='complex')
     parser.parse_args(namespace=sys.modules['__main__'])
 
     project_dir = os.path.dirname(os.path.realpath('__file__'))
-    results_path = project_dir+ '\\results\\' + results_dir
+    results_path = project_dir + '\\results\\' + results_dir
     log_path = results_path + '\\logs.txt'
     test_path = project_dir + '\\data\\test.wtag'
     comp_path = project_dir + '\\data\\comp.words'
     data_path = project_dir + '\\data\\train.wtag'
+    # test_path = project_dir + '\\data\\test_half.wtag'
+    # data_path = project_dir + '\\data\\train_and_half_test.wtag'
+    pred_path = results_path + '\\predictions.txt'
+    analysis_path = results_path + '\\analysis.csv'
 
     if toy:
         test_path = project_dir + '\\data\\test.wtag'
         comp_path = project_dir + '\\data\\comp.words'
         data_path = project_dir + '\\data\\train.wtag'
 
-        # results_dir = 'tmp2'
-        # project_dir = 'D:\\TECHNION\\NLP\\part_of_speech_taging_MEMM'
-        # results_path = project_dir + '\\results\\' + results_dir
-        # test_path = project_dir + '\\data\\carmel_test4.txt'
-        # data_path = project_dir + '\\data\\carmel_test2.txt'
-        test_path = project_dir + '\\data\\test_half.wtag'
-        data_path = project_dir + '\\data\\train_and_half_test.wtag'
+        results_dir = 'tmp'
+        project_dir = 'D:\\TECHNION\\NLP\\part_of_speech_taging_MEMM'
+        results_path = project_dir + '\\results\\' + results_dir
+        # test_path = project_dir + '\\data\\test_toy.txt'
+        # data_path = project_dir + '\\data\\train_toy.txt'
+        # test_path = project_dir + '\\data\\test_half.wtag'
+        # data_path = project_dir + '\\data\\train_and_half_test.wtag'
+        test_path = project_dir + '\\data\\carmel_test4.txt'
+        data_path = project_dir + '\\data\\carmel_test2.txt'
+        log_path = results_path + '\\logs.txt'
+        analysis_path = results_path + '\\analysis.csv'
+        pred_path = results_path + '\\predictions.txt'
 
         regularization = 0.0005
-        # mode = 'complex'
         verbosity = 1
-        word_threshold = 2
-        spelling_threshold = 5
-        # parallel = False
-        use_106_107 = True
+        word_threshold = 3
+        spelling_threshold = 8
+        parallel = True
         # log_path = project_dir + '\\results\\' + results_dir + '\\logs_parallel.txt'
-
-
-
 
     # if baba:
     #     from pos_memm.pos_memm import POS_MEMM
@@ -89,7 +92,7 @@ if __name__ == '__main__':
                 log_path=log_path,
                 spelling_threshold=spelling_threshold,
                 word_count_threshold=word_threshold,
-                use_106_107=use_106_107)
+                use_106_107=True)
 
     model.save_model(results_path)
     # model = load_model(results_path)
@@ -98,8 +101,4 @@ if __name__ == '__main__':
                parallel=parallel,
                save_results_to_file=results_path,
                log_path=log_path)
-    # model.save_model(results_path)
-
-    # pred_path = project_dir + '\\results\\complex_all_regularization_0_0005\\predictions.txt'
-    # result_path = project_dir + '\\results\\complex_all_regularization_0_0005\\analysis.csv'
-    # analyze_results(pred_path, test_path, data_path, result_path)
+    analyze_results(pred_path, test_path, data_path, analysis_path)
