@@ -52,6 +52,34 @@ def analyze_results(pred_path, real_path, train_path, results_path):
     df.to_csv(results_path, header=True, sep=',')
 
 
+def save_comp_results(all_tagged_sentence, save_results_to_file=None, comp_path=None):
+    if save_results_to_file is not None:
+        print('Saving predictions to {}'.format(save_results_to_file))
+        # creating directory
+        if not os.path.exists(save_results_to_file):
+            os.makedirs(save_results_to_file)
+
+        # saving predictions in comp format: word_tag
+        with open(save_results_to_file + '\\predictions.txt', 'w') as f:
+            for s in all_tagged_sentence:
+                f.writelines(s + '\n')
+
+    identical = True
+    if comp_path is not None:
+        (_, _, check_if_identical, _) = data_preprocessing(save_results_to_file + '\\predictions.txt', 'test')
+        with open(comp_path, "r") as f:
+            for i, line in enumerate(f):
+                tagged_sentence = ''
+                for j in range(len(check_if_identical[i])):
+                    tagged_sentence += (check_if_identical[i][j] + ' ')
+                tagged_sentence = tagged_sentence[:-1]
+                tagged_sentence += '\n'
+                if tagged_sentence != line:
+                    print('ERROR!!!')
+                    identical = False
+    return identical
+
+
 def softmax(numerator, denominator):
     denominator_max = np.max(denominator)
     denominator -= denominator_max
@@ -226,7 +254,7 @@ class POS_MEMM:
         print('Done in {} minutes'.format((time.time() - t1)/60))
 
         print('Start training...')
-        print('Mode: '.format(self.mode))
+        print('Mode: {}'.format(self.mode))
         t0 = time.time()
         optimal_params = fmin_l_bfgs_b(func=self.loss_and_grads, x0=self.weights)
         training_time = (time.time() - t0) / 60
@@ -248,7 +276,7 @@ class POS_MEMM:
                     f.writelines('Use 106 and 107 features: {}\n'.format(self.use_106_107))
                     f.writelines('Feature used:\n')
                     for feature, feature_size in zip(self.size_dict.keys(), self.size_dict.values()):
-                        f.writelines(feature+' '+feature_size+'\n')
+                        f.writelines(feature+' '+str(feature_size)+'\n')
                     f.writelines('\nTraining time: {}\n'.format(training_time))
                     f.writelines('Iterations number: {}\n'.format(optimal_params[2]['nit']))
                     f.writelines('Calls number: {}\n'.format(optimal_params[2]['funcalls']))
@@ -419,12 +447,12 @@ class POS_MEMM:
             self.size_dict['F106'] = self.V_size * self.T_size  # representes last word and current tag
             self.size_dict['F107'] = self.V_size * self.T_size  # representes next word and current tag
 
-            if self.use_106_107:
-                self.size_dict['G7_1'] = self.T_size  # is the word unknown (train: less then threshold), not a number and t(i)
-                # unknown word (train: less then threshold), not a number and t(i-1,i)
-                self.size_dict['G7_2'] = self.T_size**2
-                # unknown word (train: less then threshold), not a number and t(i-2,i-1,i)
-                self.size_dict['G7_3'] = self.T_size**3
+            # if self.use_106_107:
+            #     self.size_dict['G7_1'] = self.T_size  # is the word unknown (train: less then threshold), not a number and t(i)
+            #     # unknown word (train: less then threshold), not a number and t(i-1,i)
+            #     self.size_dict['G7_2'] = self.T_size**2
+            #     # unknown word (train: less then threshold), not a number and t(i-2,i-1,i)
+            #     self.size_dict['G7_3'] = self.T_size**3
 
             # if self.use_106_107:
             #     self.size_dict['G8_1'] = self.T_size     # is the word[i] and word[i-1] is Upper case and tag unigram?
@@ -456,6 +484,7 @@ class POS_MEMM:
             capital = True
         else:
             capital = False
+
         unigram = self.T_with_start_dict[tags[2]]
         bigram = self.T_with_start_dict[tags[2]] * self.T_size + self.T_with_start_dict[tags[1]]
         trigram = self.T_with_start_dict[tags[2]] * (self.T_size ** 2) + self.T_with_start_dict[tags[1]] * self.T_size + \
@@ -584,25 +613,26 @@ class POS_MEMM:
                 features.append(unigram + G5_len)
             G6_len = G5_len + self.T_size
 
-            # G7 : is unknown word (in train: less then some value) not a number and tags history
-            G7_1_len = self.T_size + G6_len
-            G7_2_len = self.T_size ** 2 + G7_1_len
-            G7_3_len = self.T_size ** 3 + G7_2_len
+            # # G7 : is unknown word (in train: less then some value) not a number and tags history
+            # G7_1_len = self.T_size + G6_len
+            # G7_2_len = self.T_size ** 2 + G7_1_len
+            # G7_3_len = self.T_size ** 3 + G7_2_len
+            #
+            # if (self.train_or_predict_mode == 'predict' and words[1] not in self.V and not is_number) or \
+            #         (self.train_or_predict_mode == 'train' and self.V_count[words[1]]
+            #             <= self.word_count_threshold and not is_number):
+            #     # G7_1 : tag unigram
+            #     features.append(unigram + G6_len)
+            #
+            #     # G7_2 : tag bigram
+            #     features.append(bigram + G7_1_len)
+            #
+            #     # G7_3 : tag trigram
+            #     features.append(trigram + G7_2_len)
+            #
+            # G7_len = G7_3_len
 
-            if (self.train_or_predict_mode == 'predict' and words[1] not in self.V and not is_number) or \
-                    (self.train_or_predict_mode == 'train' and self.V_count[words[1]]
-                        <= self.word_count_threshold and not is_number):
-                # G7_1 : tag unigram
-                features.append(unigram + G6_len)
-
-                # G7_2 : tag bigram
-                features.append(bigram + G7_1_len)
-
-                # G7_3 : tag trigram
-                features.append(trigram + G7_2_len)
-
-            G7_len = G7_3_len
-
+            # G7_len = G6_len
             # # G8 - try to help with NNP by using capital features not on first word:
             # if self.use_106_107 and not is_first:
             #
@@ -837,6 +867,7 @@ class POS_MEMM:
             for i in range(sentence_len):
                 tagged_sentence += (sentence[i] + '_')
                 tagged_sentence += sentence_tags[i] + (' ')
+            tagged_sentence = tagged_sentence[:-1]
             all_sentence_tags.append(sentence_tags)
             all_tagged_sentence.append(tagged_sentence)
             if self.verbosity:
@@ -861,7 +892,7 @@ class POS_MEMM:
         t0 = time.time()
         self.verbosity = verbosity
 
-        pool = Pool(processes=5, maxtasksperchild=1)
+        pool = Pool(processes=4, maxtasksperchild=1)
         res = pool.map(self.predict_sentence, corpus)
         pool.close()
         pool.join()
@@ -976,6 +1007,7 @@ class POS_MEMM:
         for i in range(sentence_len):
             tagged_sentence += (sentence[i] + '_')
             tagged_sentence += sentence_tags[i] + (' ')
+        tagged_sentence = tagged_sentence[:-1]
         if self.verbosity:
             print(tagged_sentence)
 
@@ -1174,7 +1206,6 @@ class POS_MEMM:
 
             #     self.size_dict['G9_1'] = self.T_size  # is the word[i] and word[i+1] can be from noun family tags unigram?
             # self.size_dict['G9_2'] = self.T_size  # is the word[i] can be from noun family tags unigram?
-
 
     def predict_parallel_2(self, corpus, verbosity=0, log_path=None):
 

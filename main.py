@@ -2,10 +2,10 @@
 """
 Created on Fri Dec  8 20:39:38 2017
 
-@author: carmelr
+@author: Carmel Rabinovitz, Amir Livne
 """
 
-from pos_memm.pos_memm import POS_MEMM, load_model, data_preprocessing, analyze_results
+from pos_memm.pos_memm import POS_MEMM, load_model, data_preprocessing, analyze_results, save_comp_results
 import os
 import argparse
 import sys
@@ -17,8 +17,9 @@ if __name__ == '__main__':
     parser.add_argument('-regularization', type=np.float64, default=0.0005)
     parser.add_argument('-toy', action='store_true')
     parser.add_argument('-baba', action='store_true')
-    parser.add_argument('-spelling_threshold', type=int, default=8)
+    parser.add_argument('-spelling_threshold', type=int, default=5)
     parser.add_argument('-word_threshold', type=int, default=3)
+    parser.add_argument('-end', type=int, default=0)
     parser.add_argument('-parallel', action='store_true')
     parser.add_argument('-verbosity', type=int, default=0)
     parser.add_argument('-mode', type=str, default='complex')
@@ -27,50 +28,11 @@ if __name__ == '__main__':
     project_dir = os.path.dirname(os.path.realpath('__file__'))
     results_path = project_dir + '\\results\\' + results_dir
     log_path = results_path + '\\logs.txt'
-    # test_path = project_dir + '\\data\\test.wtag'
-    # comp_path = project_dir + '\\data\\comp.words'
+    test_path = project_dir + '\\data\\test.wtag'
+    comp_path = project_dir + '\\data\\comp.words'
     # data_path = project_dir + '\\data\\train.wtag'
-    data_path = project_dir + '\\data\\train_and_test.wtag'
-    pred_path = results_path + '\\predictions.txt'
+    data_path = project_dir + '\\data\\carmel_test4.txt'
     analysis_path = results_path + '\\analysis.csv'
-
-    if toy:
-        test_path = project_dir + '\\data\\test.wtag'
-        comp_path = project_dir + '\\data\\comp.words'
-        data_path = project_dir + '\\data\\train.wtag'
-
-        results_dir = 'tmp'
-        project_dir = 'D:\\TECHNION\\NLP\\part_of_speech_taging_MEMM'
-        results_path = project_dir + '\\results\\' + results_dir
-        # test_path = project_dir + '\\data\\test_toy.txt'
-        # data_path = project_dir + '\\data\\train_toy.txt'
-        # test_path = project_dir + '\\data\\test_half.wtag'
-        # data_path = project_dir + '\\data\\train_and_half_test.wtag'
-        test_path = project_dir + '\\data\\carmel_test4.txt'
-        data_path = project_dir + '\\data\\carmel_test2.txt'
-        log_path = results_path + '\\logs.txt'
-        analysis_path = results_path + '\\analysis.csv'
-        pred_path = results_path + '\\predictions.txt'
-
-        regularization = 0.0005
-        verbosity = 1
-        word_threshold = 3
-        spelling_threshold = 8
-        parallel = True
-        # log_path = project_dir + '\\results\\' + results_dir + '\\logs_parallel.txt'
-
-    # if baba:
-    #     from pos_memm.pos_memm import POS_MEMM
-    #     results_dir = 'baba'
-    #     project_dir = 'C:\\Users\\amirli\\Desktop\\amir\\part_of_speech_taging_MEMM-carmel\\POS_MEMM'
-    #     results_path = project_dir + '\\results\\' + results_dir
-    #     test_path = project_dir + '\\data\\debug.wtag'
-    #     data_path = project_dir + '\\data\\debug.wtag'
-    #     regularization = 0.05
-    #     mode = 'complex'
-    #     verbosity = 1
-    #     use_106_107 = False
-    #     log_path = project_dir + '\\results\\' + results_dir + '\\logs.log'
 
     # save logs
     if not os.path.exists(results_path):
@@ -99,5 +61,14 @@ if __name__ == '__main__':
     #            verbosity=verbosity,
     #            parallel=parallel,
     #            save_results_to_file=results_path,
-    #            log_path=log_path)
+    #            log_path=log_path,
+    #            end=end)
     # analyze_results(pred_path, test_path, data_path, analysis_path)
+
+    ### for comp results
+    # model = load_model(results_path)
+    # (_, _, comp, _) = data_preprocessing(comp_path, 'comp')
+    # (all_tagged_sentence, all_sentence_tags) = model.predict_parallel(corpus=comp,
+    #                                                                   verbosity=verbosity,
+    #                                                                   log_path=log_path)
+    # save_comp_results(all_tagged_sentence, results_path, comp_path)
