@@ -226,6 +226,7 @@ class POS_MEMM:
         print('Done in {} minutes'.format((time.time() - t1)/60))
 
         print('Start training...')
+        print('Mode: '.format(self.mode))
         t0 = time.time()
         optimal_params = fmin_l_bfgs_b(func=self.loss_and_grads, x0=self.weights)
         training_time = (time.time() - t0) / 60

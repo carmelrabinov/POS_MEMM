@@ -29,9 +29,8 @@ if __name__ == '__main__':
     log_path = results_path + '\\logs.txt'
     # test_path = project_dir + '\\data\\test.wtag'
     # comp_path = project_dir + '\\data\\comp.words'
-    data_path = project_dir + '\\data\\train.wtag'
-    # test_path = project_dir + '\\data\\test_half.wtag'
-    # data_path = project_dir + '\\data\\train_and_half_test.wtag'
+    # data_path = project_dir + '\\data\\train.wtag'
+    data_path = project_dir + '\\data\\train_and_test.wtag'
     pred_path = results_path + '\\predictions.txt'
     analysis_path = results_path + '\\analysis.csv'
 
@@ -78,7 +77,7 @@ if __name__ == '__main__':
         os.makedirs(results_path)
     with open(log_path, 'w') as f:
         f.writelines('Data path: {}\n'.format(data_path))
-        f.writelines('Test path: {}\n'.format(test_path))
+        # f.writelines('Test path: {}\n'.format(test_path))
         f.writelines('regularization: {}\n'.format(regularization))
         f.writelines('Spelling threshold: {}\n'.format(spelling_threshold))
         f.writelines('Unknown words threshold: {}\n'.format(word_threshold))
