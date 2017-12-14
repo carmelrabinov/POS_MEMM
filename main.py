@@ -27,8 +27,8 @@ if __name__ == '__main__':
     project_dir = os.path.dirname(os.path.realpath('__file__'))
     results_path = project_dir + '\\results\\' + results_dir
     log_path = results_path + '\\logs.txt'
-    test_path = project_dir + '\\data\\test.wtag'
-    comp_path = project_dir + '\\data\\comp.words'
+    # test_path = project_dir + '\\data\\test.wtag'
+    # comp_path = project_dir + '\\data\\comp.words'
     data_path = project_dir + '\\data\\train.wtag'
     # test_path = project_dir + '\\data\\test_half.wtag'
     # data_path = project_dir + '\\data\\train_and_half_test.wtag'
@@ -96,9 +96,9 @@ if __name__ == '__main__':
 
     model.save_model(results_path)
     # model = load_model(results_path)
-    model.test(test_path,
-               verbosity=verbosity,
-               parallel=parallel,
-               save_results_to_file=results_path,
-               log_path=log_path)
-    analyze_results(pred_path, test_path, data_path, analysis_path)
+    # model.test(test_path,
+    #            verbosity=verbosity,
+    #            parallel=parallel,
+    #            save_results_to_file=results_path,
+    #            log_path=log_path)
+    # analyze_results(pred_path, test_path, data_path, analysis_path)

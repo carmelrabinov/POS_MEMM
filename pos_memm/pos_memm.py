@@ -246,8 +246,8 @@ class POS_MEMM:
                     f.writelines('V size: {}\n'.format(self.V_size))
                     f.writelines('Use 106 and 107 features: {}\n'.format(self.use_106_107))
                     f.writelines('Feature used:\n')
-                    for feature in self.size_dict.keys():
-                        f.writelines(feature+'\n')
+                    for feature, feature_size in zip(self.size_dict.keys(), self.size_dict.values()):
+                        f.writelines(feature+' '+feature_size+'\n')
                     f.writelines('\nTraining time: {}\n'.format(training_time))
                     f.writelines('Iterations number: {}\n'.format(optimal_params[2]['nit']))
                     f.writelines('Calls number: {}\n'.format(optimal_params[2]['funcalls']))
