@@ -19,7 +19,7 @@ if __name__ == '__main__':
     parser.add_argument('-data_path', type=str, default=None)
     parser.add_argument('-comp_path', type=str, default=None)
     parser.add_argument('-test_path', type=str, default=None)
-    parser.add_argument('-regularization', type=np.float64, default=0.0005)
+    parser.add_argument('-regularization', type=np.float64, default=5e-05)
     parser.add_argument('-spelling_threshold', type=int, default=5)
     parser.add_argument('-word_threshold', type=int, default=3)
     parser.add_argument('-end', type=int, default=0)
@@ -33,9 +33,12 @@ if __name__ == '__main__':
         comp_path = project_dir + '\\data\\comp.words'
     if test_path is None:
         test_path = project_dir + '\\data\\test.wtag'
+        # test_path = project_dir + '\\data\\debug2.txt'
     if data_path is None:
-        data_path = project_dir + '\\data\\train.wtag'
-        # data_path = project_dir + '\\data\\train_and_test.wtag'
+        # data_path = project_dir + '\\data\\train.wtag'
+        # data_path = project_dir + '\\data\\test.wtag'
+        # data_path = project_dir + '\\data\\debug.txt'
+        data_path = project_dir + '\\data\\train_and_test.wtag'
     results_path = project_dir + '\\results\\' + results_dir
     log_path = results_path + '\\logs.txt'
     pred_path = results_path + '\\predictions.txt'

@@ -243,7 +243,7 @@ class POS_MEMM:
         print('Start training...')
         print('Mode: {}'.format(self.mode))
         t0 = time.time()
-        optimal_params = fmin_l_bfgs_b(func=self.loss_and_grads, x0=self.weights)
+        optimal_params = fmin_l_bfgs_b(func=self.loss_and_grads_2, x0=self.weights)
         training_time = (time.time() - t0) / 60
         print('Finished training with code: ', optimal_params[2]['warnflag'])
         print('Training time: {} minutes'.format(training_time))
@@ -330,6 +330,25 @@ class POS_MEMM:
             feature_all_tags.append(self.get_features(words, [t2, t1, tag], isfirst))
         denominator = np.sum(w[feature_all_tags], axis=1)
         return softmax(denominator, denominator)
+
+    def calc_all_possible_tags_probabilities_2(self, words, t1, t2, w, isfirst=False):
+        """
+        calculate probability p(ti|xi,w)
+        :param words: the words[i-1,i,i+1]
+        :param t1: POS tag for word[i-1]
+        :param t2: POS tag for word[i-2]
+        :param w: weights vector
+        :return: a list for all possible ti probabilities p(ti|xi,w) as float64
+        """
+        prob_mat = np.zeros((self.T_size - 2, self.T_size - 2, self.T_size - 2))
+        for u in self.T:  # for each t-1 possible tag
+            for t in self.T:  # for each t-2 possible tag:
+                for tag in self.T:
+                    prob_mat[tag, u, t] = np.sum(self.weights[self.get_features(words, [t, u, tag], isfirst)])
+
+        prob_mat -= np.max(prob_mat)
+        denominator = np.sum(prob_mat, axis=0, keepdims=True)
+        prob_mat /= denominator
 
     def loss_and_grads(self, w):
         t0 = time.time()
@@ -1058,7 +1077,7 @@ class POS_MEMM:
                             words = (sentence[k - 1], sentence[k], '/STOP')
                         else:
                             words = tuple(sentence[k - 1:k + 2])
-                    # prob_mat = self.calc_all_possible_tags_probabilities_pred(words, self.weights)
+                    # prob_mat = calc_all_possible_tags_probabilities_2(words, u, t, self.weights)
                     prob_mat = np.zeros((self.T_size - 2, self.T_size - 2, self.T_size - 2))
                     for u in self.T:  # for each t-1 possible tag
                         for t in self.T:  # for each t-2 possible tag:
@@ -1118,3 +1137,56 @@ class POS_MEMM:
             print(tagged_sentence)
 
         return tagged_sentence, sentence_tags
+
+    def loss_and_grads_2(self, w):
+        t0 = time.time()
+
+        empirical_counts = np.zeros(self.feature_size, dtype=np.float64)
+
+        expected_loss = 0
+        expected_counts = np.zeros(self.feature_size, dtype=np.float64)
+
+        # calculate normalization loss term
+        normalization_counts = self.regularization * w * len(self.data)
+        normalization_loss = (np.sum(np.square(w)) * self.regularization / 2) * len(self.data)
+
+        all_features_exp_term = np.zeros((len(self.features_dict), self.T_size-2))
+        all_features_count = np.zeros((len(self.features_dict)))
+        all_features_inx = []
+        repeats = []
+        i = 0
+
+        for key, features_inx in self.features_dict.items():
+            (words, t2, t1, t, isfirst) = key
+            all_features_inx.extend(list(chain(*self.features_dict_all_tags[(words, t2, t1, isfirst)])))
+            repeats.extend(np.repeat(len(features_inx), self.T_size-2))
+
+            count = self.features_count_dict[key]
+            all_features_count[i] = count
+
+            # calculate empirical loss term
+            empirical_counts[features_inx] += count
+
+            # a = self.features_dict_all_tags[(words, t2, t1, isfirst)]
+            # b = w[a]
+            exp_term = np.sum(w[self.features_dict_all_tags[(words, t2, t1, isfirst)]], axis=1)
+            all_features_exp_term[i, :] = exp_term
+            i += 1
+
+        expected_loss = np.sum(logsumexp(all_features_exp_term, axis=1) * all_features_count)
+        all_features_exp_term -= np.max(all_features_exp_term)
+        all_features_exp_term = np.exp(all_features_exp_term)
+        denominator = np.sum(all_features_exp_term, axis=1, keepdims=1)
+        p = np.divide(all_features_exp_term, denominator) * all_features_count[:, None]
+        p_ = list(chain(*p))
+        # expected_counts[list(self.features_dict.values())] = all_features_exp_term
+        np.add.at(expected_counts, all_features_inx, np.repeat(p_, repeats))
+
+        empirical_loss = np.sum(w * empirical_counts)
+
+        w_grads = empirical_counts - expected_counts - normalization_counts
+        loss_ = empirical_loss - expected_loss - normalization_loss
+        if self.verbosity:
+            print('Done calculate loss and grads in {} minutes, Loss is: {}'.format((time.time() - t0) / 60, (-1) * loss_))
+
+        return (-1)*loss_, (-1)*w_grads

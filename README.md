@@ -1,6 +1,8 @@
 # POS_MEMM
-This project was written by Carmel Rabinovitz and Amir Livne as part of NLP technion course
-
+This project was written by Carmel Rabinovitz and Amir Livne as part of NLP Technion course
+This is a part of speech tagger (using max entropy).
+We reached 93.7% accuracy over test set
+ 
 ## How to use:
 To run the POS MEMM on comp data use:
 ```
